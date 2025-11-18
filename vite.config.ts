@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg"],
       manifest: {
-        name: "LM Studio OCR PWA",
-        short_name: "OCR PWA",
+        name: "LM Studio OCR Application",
+        short_name: "LM Studio OCR",
         start_url: "/",
         display: "standalone",
         background_color: "#0f172a",
@@ -34,4 +34,3 @@ export default defineConfig({
     port: 5173
   }
 });
-

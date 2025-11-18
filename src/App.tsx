@@ -1,6 +1,15 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { requestOcrHtml } from "./lmStudioClient";
 import { htmlToMarkdown } from "./ocr/htmlToMarkdown";
+import { renderBboxesFromHtml } from "./ocr/renderBboxes";
+import { fileToHash } from "./lib/hash";
+import {
+  listAllOcrResults,
+  loadOcrResult,
+  saveOcrResult,
+  clearAllOcrResults
+} from "./storage/ocrStore";
+import { exportAllToDirectory, makeZipBlob } from "./export/exportAll";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
@@ -16,6 +25,23 @@ import {
 type OutputFormat = "all" | "markdown_with_headers" | "markdown" | "html";
 
 type ThemeMode = "light" | "dark" | "system";
+
+type BatchJobStatus = "queued" | "processing" | "done" | "error";
+
+type BatchJob = {
+  id: number;
+  name: string;
+  status: BatchJobStatus;
+  cached: boolean;
+};
+
+type GalleryItem = {
+  id: string;
+  name: string;
+  url: string;
+  fromCache: boolean;
+  createdAt: number;
+};
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -51,8 +77,21 @@ export const App: React.FC = () => {
   const [markdownWithHeaders, setMarkdownWithHeaders] = useState("");
   const [markdownNoHeaders, setMarkdownNoHeaders] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [annotatedImageUrl, setAnnotatedImageUrl] = useState<string>("");
+
+  const [batchFiles, setBatchFiles] = useState<File[]>([]);
+  const [batchJobs, setBatchJobs] = useState<BatchJob[]>([]);
+  const [batchStatus, setBatchStatus] = useState("Idle");
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchIsRunning, setBatchIsRunning] = useState(false);
 
   const [theme, setTheme] = useState<ThemeMode>("system");
+
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
+  const [canUseDirectoryPicker, setCanUseDirectoryPicker] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -102,6 +141,37 @@ export const App: React.FC = () => {
     }
   }, [theme]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setCanUseDirectoryPicker("showDirectoryPicker" in (window as any));
+  }, []);
+
+  const upsertGalleryItem = useCallback(
+    (id: string, name: string, url: string, fromCache: boolean) => {
+      setGalleryItems((prev) => {
+        const existingIndex = prev.findIndex((item) => item.id === id);
+        const now = Date.now();
+        const nextItem: GalleryItem = {
+          id,
+          name,
+          url,
+          fromCache,
+          createdAt: now
+        };
+
+        if (existingIndex === -1) {
+          return [nextItem, ...prev];
+        }
+
+        const next = [...prev];
+        next[existingIndex] = nextItem;
+        next.sort((a, b) => b.createdAt - a.createdAt);
+        return next;
+      });
+    },
+    []
+  );
+
   const handleTestConnection = useCallback(async () => {
     setConnectionStatus("Testing connection...");
     setError(null);
@@ -150,8 +220,36 @@ export const App: React.FC = () => {
       setHtmlOutput("");
       setMarkdownWithHeaders("");
       setMarkdownNoHeaders("");
+      setAnnotatedImageUrl("");
 
       try {
+        const hash = await fileToHash(selectedFile);
+
+        try {
+          const cached = await loadOcrResult(hash, model);
+          if (cached) {
+            setHtmlOutput(cached.html);
+            if (format === "all" || format === "markdown_with_headers") {
+              setMarkdownWithHeaders(cached.markdownWithHeaders);
+            }
+            if (format === "all" || format === "markdown") {
+              setMarkdownNoHeaders(cached.markdownNoHeaders);
+            }
+            if (cached.annotatedImageDataUrl) {
+              setAnnotatedImageUrl(cached.annotatedImageDataUrl);
+              upsertGalleryItem(
+                hash,
+                selectedFile.name,
+                cached.annotatedImageDataUrl,
+                true
+              );
+            }
+            setStatus("Loaded from cache");
+            return;
+          }
+        } catch {
+        }
+
         const imageDataUrl = await fileToDataUrl(selectedFile);
 
         const html = await requestOcrHtml({
@@ -166,11 +264,40 @@ export const App: React.FC = () => {
 
         setHtmlOutput(html);
 
+        let mdWith = "";
+        let mdWithout = "";
+
         if (format === "all" || format === "markdown_with_headers") {
-          setMarkdownWithHeaders(htmlToMarkdown(html, true));
+          mdWith = htmlToMarkdown(html, true);
+          setMarkdownWithHeaders(mdWith);
         }
         if (format === "all" || format === "markdown") {
-          setMarkdownNoHeaders(htmlToMarkdown(html, false));
+          mdWithout = htmlToMarkdown(html, false);
+          setMarkdownNoHeaders(mdWithout);
+        }
+
+        let annotated: string | undefined;
+        try {
+          annotated = await renderBboxesFromHtml(selectedFile, html);
+          setAnnotatedImageUrl(annotated);
+          upsertGalleryItem(
+            hash,
+            selectedFile.name,
+            annotated,
+            false
+          );
+        } catch {
+        }
+
+        try {
+          await saveOcrResult(hash, model, {
+            imageName: selectedFile.name,
+            html,
+            markdownWithHeaders: mdWith || htmlToMarkdown(html, true),
+            markdownNoHeaders: mdWithout || htmlToMarkdown(html, false),
+            annotatedImageDataUrl: annotated
+          });
+        } catch {
         }
 
         setStatus("Completed");
@@ -183,12 +310,267 @@ export const App: React.FC = () => {
         setIsRunning(false);
       }
     },
-    [apiKey, baseUrl, format, model, selectedFile]
+    [apiKey, baseUrl, format, model, selectedFile, upsertGalleryItem]
+  );
+
+  const handleRunBatchOcr = useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+      setBatchError(null);
+
+      if (!batchFiles.length) {
+        setBatchError("Please select at least one image to process.");
+        return;
+      }
+
+      setBatchIsRunning(true);
+      setBatchStatus("Running batch OCR...");
+
+      setBatchJobs(
+        batchFiles.map((file, index) => ({
+          id: index,
+          name: file.name,
+          status: "queued",
+          cached: false
+        }))
+      );
+
+      try {
+        for (let i = 0; i < batchFiles.length; i += 1) {
+          const file = batchFiles[i];
+
+          setBatchJobs((prev) =>
+              prev.map((job) =>
+                job.id === i ? { ...job, status: "processing" } : job
+              )
+          );
+
+          try {
+            const hash = await fileToHash(file);
+
+            try {
+              const cached = await loadOcrResult(hash, model);
+              if (cached) {
+                setHtmlOutput(cached.html);
+                if (format === "all" || format === "markdown_with_headers") {
+                  setMarkdownWithHeaders(cached.markdownWithHeaders);
+                }
+                if (format === "all" || format === "markdown") {
+                  setMarkdownNoHeaders(cached.markdownNoHeaders);
+                }
+                if (cached.annotatedImageDataUrl) {
+                  setAnnotatedImageUrl(cached.annotatedImageDataUrl);
+                  upsertGalleryItem(
+                    hash,
+                    file.name,
+                    cached.annotatedImageDataUrl,
+                    true
+                  );
+                }
+                setBatchJobs((prev) =>
+                  prev.map((job) =>
+                    job.id === i
+                      ? { ...job, status: "done", cached: true }
+                      : job
+                  )
+                );
+                continue;
+              }
+            } catch {
+            }
+
+            const imageDataUrl = await fileToDataUrl(file);
+
+            const html = await requestOcrHtml({
+              config: {
+                baseUrl,
+                model,
+                apiKey
+              },
+              promptType: "ocr_layout",
+              imageDataUrl
+            });
+
+            setHtmlOutput(html);
+
+            let mdWith = "";
+            let mdWithout = "";
+
+            if (format === "all" || format === "markdown_with_headers") {
+              mdWith = htmlToMarkdown(html, true);
+              setMarkdownWithHeaders(mdWith);
+            }
+            if (format === "all" || format === "markdown") {
+              mdWithout = htmlToMarkdown(html, false);
+              setMarkdownNoHeaders(mdWithout);
+            }
+
+            let annotated: string | undefined;
+            try {
+              annotated = await renderBboxesFromHtml(file, html);
+              setAnnotatedImageUrl(annotated);
+              upsertGalleryItem(
+                hash,
+                file.name,
+                annotated,
+                false
+              );
+            } catch {
+            }
+
+            try {
+              await saveOcrResult(hash, model, {
+                imageName: file.name,
+                html,
+                markdownWithHeaders: mdWith || htmlToMarkdown(html, true),
+                markdownNoHeaders: mdWithout || htmlToMarkdown(html, false),
+                annotatedImageDataUrl: annotated
+              });
+            } catch {
+            }
+
+            setBatchJobs((prev) =>
+              prev.map((job) =>
+                job.id === i ? { ...job, status: "done" } : job
+              )
+            );
+          } catch (e) {
+            const message =
+              e instanceof Error
+                ? e.message
+                : "Unexpected error during batch OCR.";
+            setBatchError(message);
+            setBatchJobs((prev) =>
+              prev.map((job) =>
+                job.id === i ? { ...job, status: "error" } : job
+              )
+            );
+          }
+        }
+
+        setBatchStatus("Batch completed");
+      } finally {
+        setBatchIsRunning(false);
+      }
+    },
+    [apiKey, baseUrl, batchFiles, format, model, upsertGalleryItem]
   );
 
   const imagePreviewUrl = selectedFile
     ? URL.createObjectURL(selectedFile)
     : null;
+
+  const handleLoadGalleryFromStorage = useCallback(async () => {
+    setExportError(null);
+    const results = await listAllOcrResults();
+    const items: GalleryItem[] = [];
+    for (const result of results) {
+      if (!result.annotatedImageDataUrl) continue;
+      items.push({
+        id: result.key,
+        name: result.imageName,
+        url: result.annotatedImageDataUrl,
+        fromCache: true,
+        createdAt: result.createdAt
+      });
+    }
+    items.sort((a, b) => b.createdAt - a.createdAt);
+    setGalleryItems(items);
+    setExportStatus(
+      items.length
+        ? `Loaded ${items.length} annotated images from storage.`
+        : "No annotated images found in storage."
+    );
+  }, []);
+
+  const handleExportToFolder = useCallback(async () => {
+    setExportError(null);
+    setExportStatus(null);
+
+    if (!canUseDirectoryPicker) {
+      setExportError(
+        "This browser does not support selecting a target folder."
+      );
+      return;
+    }
+
+    setIsExporting(true);
+    setExportStatus("Preparing export…");
+
+    try {
+      const dirHandle = await (window as any).showDirectoryPicker();
+      const results = await listAllOcrResults();
+      await exportAllToDirectory(dirHandle, results);
+      setExportStatus(
+        results.length
+          ? `Exported ${results.length} items to the selected folder.`
+          : "No OCR results found to export."
+      );
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Failed to export to folder.";
+      setExportError(message);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [canUseDirectoryPicker]);
+
+  const handleDownloadZip = useCallback(async () => {
+    setExportError(null);
+    setExportStatus(null);
+    setIsExporting(true);
+    setExportStatus("Preparing ZIP…");
+
+    try {
+      const results = await listAllOcrResults();
+      const blob = await makeZipBlob(results);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "ocr_outputs.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setExportStatus(
+        results.length
+          ? `Downloaded ${results.length} items as ZIP.`
+          : "No OCR results found to include in ZIP."
+      );
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Failed to prepare ZIP archive.";
+      setExportError(message);
+    } finally {
+      setIsExporting(false);
+    }
+  }, []);
+
+  const handleClearGalleryAndCache = useCallback(async () => {
+    setExportError(null);
+    setExportStatus(null);
+
+    const confirmed = window.confirm(
+      "This will clear the local OCR cache and gallery stored in your browser. This cannot be undone. Do you want to continue?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      await clearAllOcrResults();
+      setGalleryItems([]);
+      setAnnotatedImageUrl("");
+      setExportStatus("Cleared local OCR cache and gallery.");
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Failed to clear local cache.";
+      setExportError(message);
+    } finally {
+      setIsExporting(false);
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -196,7 +578,7 @@ export const App: React.FC = () => {
         <div className="container flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <h1 className="text-xl font-semibold tracking-tight">
-              LM Studio OCR PWA
+              LM Studio OCR Application
             </h1>
             <p className="text-sm text-muted-foreground">
               Run high-quality OCR against your local LM Studio vision models.
@@ -371,6 +753,110 @@ export const App: React.FC = () => {
               </form>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Batch OCR</CardTitle>
+              <CardDescription>
+                Select multiple images and process them sequentially using the
+                current settings.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleRunBatchOcr} className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="batch-files">Images</Label>
+                  <Input
+                    id="batch-files"
+                    type="file"
+                    multiple
+                    accept=".png,.jpg,.jpeg,.tiff,.tif"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? []);
+                      setBatchFiles(files);
+                      setBatchJobs(
+                        files.map((file, index) => ({
+                          id: index,
+                          name: file.name,
+                          status: "queued" as BatchJobStatus,
+                          cached: false
+                        }))
+                      );
+                      setBatchStatus(files.length ? "Ready" : "Idle");
+                      setBatchError(null);
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Using output format:{" "}
+                    {format === "all"
+                      ? "All (HTML + markdown)"
+                      : format === "markdown_with_headers"
+                      ? "Markdown with headers/footers"
+                      : format === "markdown"
+                      ? "Markdown without headers/footers"
+                      : "HTML only"}
+                    .
+                  </p>
+                </div>
+
+                {batchJobs.length > 0 && (
+                  <div className="rounded-md border border-border/70 bg-muted/40 p-2">
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">
+                      Queue
+                    </p>
+                    <ul className="space-y-1 text-xs">
+                      {batchJobs.map((job) => (
+                        <li
+                          key={job.id}
+                          className="flex items-center justify-between gap-2"
+                        >
+                          <span className="truncate max-w-[10rem]">
+                            {job.name}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span
+                              className={
+                                job.status === "done"
+                                  ? "text-emerald-400"
+                                  : job.status === "processing"
+                                  ? "text-sky-400"
+                                  : job.status === "error"
+                                  ? "text-destructive"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              {job.status}
+                            </span>
+                            {job.cached && (
+                              <span className="rounded-full bg-amber-500/10 px-2 py-[1px] text-[0.65rem] font-medium text-amber-400">
+                                cached
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="submit"
+                    disabled={batchIsRunning || batchFiles.length === 0}
+                  >
+                    {batchIsRunning ? "Processing batch…" : "Run batch"}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {batchStatus}
+                  </span>
+                </div>
+
+                {batchError && (
+                  <p className="text-xs text-destructive">{batchError}</p>
+                )}
+              </form>
+            </CardContent>
+          </Card>
         </div>
 
         <Card>
@@ -421,6 +907,114 @@ export const App: React.FC = () => {
                     rows={10}
                     spellCheck={false}
                   />
+                </div>
+              )}
+            </div>
+
+            {annotatedImageUrl && (
+              <div className="mt-4 space-y-2">
+                <h3 className="text-sm font-medium text-muted-foreground">
+                  Annotated image (bounding boxes)
+                </h3>
+                <div className="overflow-hidden rounded-lg border border-border/80 bg-black/5">
+                  <img
+                    src={annotatedImageUrl}
+                    alt="Annotated OCR result with bounding boxes"
+                    className="block max-h-[420px] w-full object-contain"
+                  />
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Gallery & Export</CardTitle>
+            <CardDescription>
+              Browse annotated images and export all OCR outputs to a folder or
+              ZIP archive.
+            </CardDescription>
+          </CardHeader>
+            <CardContent>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLoadGalleryFromStorage}
+                  disabled={isExporting}
+                >
+                  Load gallery from storage
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportToFolder}
+                  disabled={isExporting || !canUseDirectoryPicker}
+                >
+                  Export all to folder
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadZip}
+                  disabled={isExporting}
+                >
+                  Download all as ZIP
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearGalleryAndCache}
+                  disabled={isExporting}
+                >
+                  Clear gallery & cache
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {exportStatus}
+              </div>
+            </div>
+
+            {exportError && (
+              <p className="mt-1 text-xs text-destructive">{exportError}</p>
+            )}
+
+            <div className="mt-4">
+              {galleryItems.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No annotated images yet. Run OCR or load from storage to
+                  populate the gallery.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+                  {galleryItems.map((item) => (
+                    <figure
+                      key={item.id}
+                      className="overflow-hidden rounded-lg border border-border/70 bg-muted/40"
+                    >
+                      <img
+                        src={item.url}
+                        alt={item.name}
+                        className="block max-h-56 w-full object-contain bg-black/10"
+                      />
+                      <figcaption className="flex items-center justify-between gap-2 px-2 py-1 text-xs text-muted-foreground">
+                        <span className="truncate max-w-[11rem]">
+                          {item.name}
+                        </span>
+                        {item.fromCache && (
+                          <span className="rounded-full bg-amber-500/10 px-2 py-[1px] text-[0.65rem] font-medium text-amber-400">
+                            cached
+                          </span>
+                        )}
+                      </figcaption>
+                    </figure>
+                  ))}
                 </div>
               )}
             </div>

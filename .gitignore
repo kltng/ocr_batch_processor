@@ -1,0 +1,10 @@
+## node modules
+/node_modules/
+
+
+## Project based files
+/references/
+
+## OS generated files
+.DS_Store
+Thumbs.db

@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  base: "/lmstudio_ocr_application/",
   plugins: [
     react(),
     VitePWA({
@@ -11,7 +12,7 @@ export default defineConfig({
       manifest: {
         name: "LM Studio OCR Application",
         short_name: "LM Studio OCR",
-        start_url: "/",
+        start_url: "/lmstudio_ocr_application/",
         display: "standalone",
         background_color: "#0f172a",
         theme_color: "#0f172a",

@@ -57,10 +57,15 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="w-[500px] bg-background border rounded-lg shadow-lg flex flex-col max-h-[90vh]">
+            <div
+                className="w-[500px] bg-background border rounded-lg shadow-lg flex flex-col max-h-[90vh]"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="settings-title"
+            >
                 <div className="flex items-center justify-between px-6 py-4 border-b">
-                    <h2 className="text-lg font-semibold">Settings</h2>
-                    <Button variant="ghost" size="sm" onClick={onClose}>✕</Button>
+                    <h2 id="settings-title" className="text-lg font-semibold">Settings</h2>
+                    <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close Settings">✕</Button>
                 </div>
 
                 <div className="p-6 space-y-4 overflow-y-auto">

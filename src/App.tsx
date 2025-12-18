@@ -14,6 +14,7 @@ import { FileSidebar } from "./components/FileSidebar";
 import { DocumentViewer } from "./components/DocumentViewer";
 import { ActionToolbar } from "./components/ActionToolbar";
 import { SettingsDialog, OcrProvider } from "./components/SettingsDialog";
+import { InstructionsPage } from "./components/InstructionsPage";
 
 export const App: React.FC = () => {
   // --- Config State ---
@@ -31,6 +32,7 @@ export const App: React.FC = () => {
   // Shared
   const [systemPrompt, setSystemPrompt] = useState(getPrompt("ocr_layout"));
   const [showSettings, setShowSettings] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(true);
 
   // --- Workspace State ---
   const [workDirHandle, setWorkDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
@@ -269,6 +271,7 @@ export const App: React.FC = () => {
             onOpenSettings={() => setShowSettings(true)}
             skipExisting={skipExisting}
             setSkipExisting={setSkipExisting}
+            onOpenHelp={() => setShowInstructions(true)}
           />
         }
         content={
@@ -301,6 +304,11 @@ export const App: React.FC = () => {
         systemPrompt={systemPrompt}
         setSystemPrompt={setSystemPrompt}
         defaultSystemPrompt={getPrompt("ocr_layout")}
+      />
+
+      <InstructionsPage
+        isOpen={showInstructions}
+        onClose={() => setShowInstructions(false)}
       />
     </>
   );

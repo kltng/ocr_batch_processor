@@ -11,6 +11,7 @@ interface ActionToolbarProps {
     onOpenSettings: () => void;
     skipExisting: boolean;
     setSkipExisting: (val: boolean) => void;
+    onOpenHelp: () => void;
 }
 
 export const ActionToolbar: React.FC<ActionToolbarProps> = ({
@@ -23,6 +24,7 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
     onOpenSettings,
     skipExisting,
     setSkipExisting,
+    onOpenHelp,
 }) => {
     const hasSelection = selectedCount > 0;
 
@@ -78,8 +80,11 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
                     <span>{statusMessage}</span>
                 </div>
 
-                <Button variant="ghost" size="sm" onClick={onOpenSettings} title="Settings">
-                    ⚙️
+                <Button variant="ghost" size="sm" onClick={onOpenSettings}>
+                    Settings
+                </Button>
+                <Button variant="ghost" size="sm" onClick={onOpenHelp}>
+                    Help
                 </Button>
             </div>
         </div>

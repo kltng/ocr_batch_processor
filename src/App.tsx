@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { requestOcrHtml } from "./lmStudioClient";
+import { getPrompt } from "./ocr/prompts";
 import { htmlToMarkdown } from "./ocr/htmlToMarkdown";
 import { renderBboxesFromHtml } from "./ocr/renderBboxes";
 import { fileToHash } from "./lib/hash";
@@ -65,6 +66,7 @@ export const App: React.FC = () => {
   const [baseUrl, setBaseUrl] = useState("http://localhost:1234");
   const [model, setModel] = useState("chandra-ocr");
   const [apiKey, setApiKey] = useState("lm-studio");
+  const [systemPrompt, setSystemPrompt] = useState(getPrompt("ocr_layout"));
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [format, setFormat] = useState<OutputFormat>("all");
@@ -259,7 +261,8 @@ export const App: React.FC = () => {
             apiKey
           },
           promptType: "ocr_layout",
-          imageDataUrl
+          imageDataUrl,
+          customSystemPrompt: systemPrompt
         });
 
         setHtmlOutput(html);
@@ -340,9 +343,9 @@ export const App: React.FC = () => {
           const file = batchFiles[i];
 
           setBatchJobs((prev) =>
-              prev.map((job) =>
-                job.id === i ? { ...job, status: "processing" } : job
-              )
+            prev.map((job) =>
+              job.id === i ? { ...job, status: "processing" } : job
+            )
           );
 
           try {
@@ -388,7 +391,8 @@ export const App: React.FC = () => {
                 apiKey
               },
               promptType: "ocr_layout",
-              imageDataUrl
+              imageDataUrl,
+              customSystemPrompt: systemPrompt
             });
 
             setHtmlOutput(html);
@@ -678,6 +682,35 @@ export const App: React.FC = () => {
 
           <Card>
             <CardHeader>
+              <CardTitle>System Prompt</CardTitle>
+              <CardDescription>
+                Customize the system prompt sent to the model.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="systemPrompt">Prompt content</Label>
+                  <Textarea
+                    id="systemPrompt"
+                    value={systemPrompt}
+                    onChange={(e) => setSystemPrompt(e.target.value)}
+                    className="min-h-[200px] font-mono text-xs"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSystemPrompt(getPrompt("ocr_layout"))}
+                >
+                  Reset to Default
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Single Image OCR</CardTitle>
               <CardDescription>
                 Upload a document image and generate HTML and markdown outputs.
@@ -791,10 +824,10 @@ export const App: React.FC = () => {
                     {format === "all"
                       ? "All (HTML + markdown)"
                       : format === "markdown_with_headers"
-                      ? "Markdown with headers/footers"
-                      : format === "markdown"
-                      ? "Markdown without headers/footers"
-                      : "HTML only"}
+                        ? "Markdown with headers/footers"
+                        : format === "markdown"
+                          ? "Markdown without headers/footers"
+                          : "HTML only"}
                     .
                   </p>
                 </div>
@@ -819,10 +852,10 @@ export const App: React.FC = () => {
                                 job.status === "done"
                                   ? "text-emerald-400"
                                   : job.status === "processing"
-                                  ? "text-sky-400"
-                                  : job.status === "error"
-                                  ? "text-destructive"
-                                  : "text-muted-foreground"
+                                    ? "text-sky-400"
+                                    : job.status === "error"
+                                      ? "text-destructive"
+                                      : "text-muted-foreground"
                               }
                             >
                               {job.status}
@@ -936,7 +969,7 @@ export const App: React.FC = () => {
               ZIP archive.
             </CardDescription>
           </CardHeader>
-            <CardContent>
+          <CardContent>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <Button

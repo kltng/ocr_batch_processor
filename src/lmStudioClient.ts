@@ -11,6 +11,7 @@ export type OcrRequest = {
   config: LmStudioConfig;
   promptType: PromptType;
   imageDataUrl: string;
+  customSystemPrompt?: string;
 };
 
 type ChatCompletionMessage = {
@@ -32,7 +33,8 @@ type ChatCompletionResponse = {
 export async function requestOcrHtml({
   config,
   promptType,
-  imageDataUrl
+  imageDataUrl,
+  customSystemPrompt
 }: OcrRequest): Promise<string> {
   const { baseUrl, model, apiKey } = config;
 
@@ -42,7 +44,7 @@ export async function requestOcrHtml({
   const messages: ChatCompletionMessage[] = [
     {
       role: "system",
-      content: getPrompt(promptType)
+      content: customSystemPrompt || getPrompt(promptType)
     },
     {
       role: "user",

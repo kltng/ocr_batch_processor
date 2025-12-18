@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { requestOcrHtml } from "./lmStudioClient";
+import { requestGeminiOcr } from "./geminiClient";
 import { getPrompt } from "./ocr/prompts";
 import { htmlToMarkdown } from "./ocr/htmlToMarkdown";
 import { renderBboxesFromHtml } from "./ocr/renderBboxes";
@@ -12,13 +13,22 @@ import { WorkspaceLayout } from "./components/layout/WorkspaceLayout";
 import { FileSidebar } from "./components/FileSidebar";
 import { DocumentViewer } from "./components/DocumentViewer";
 import { ActionToolbar } from "./components/ActionToolbar";
-import { SettingsDialog } from "./components/SettingsDialog";
+import { SettingsDialog, OcrProvider } from "./components/SettingsDialog";
 
 export const App: React.FC = () => {
   // --- Config State ---
-  const [baseUrl, setBaseUrl] = useState("http://localhost:1234");
-  const [model, setModel] = useState("chandra-ocr");
-  const [apiKey, setApiKey] = useState("lm-studio");
+  const [provider, setProvider] = useState<OcrProvider>("lmstudio");
+
+  // LM Studio Config
+  const [lmBaseUrl, setLmBaseUrl] = useState("http://localhost:1234");
+  const [lmModel, setLmModel] = useState("chandra-ocr");
+  const [lmApiKey, setLmApiKey] = useState("lm-studio");
+
+  // Google Config
+  const [googleApiKey, setGoogleApiKey] = useState("");
+  const [googleModel, setGoogleModel] = useState("gemini-2.5-flash");
+
+  // Shared
   const [systemPrompt, setSystemPrompt] = useState(getPrompt("ocr_layout"));
   const [showSettings, setShowSettings] = useState(false);
 
@@ -85,12 +95,8 @@ export const App: React.FC = () => {
     }
   }, [workDirHandle, activeFile]);
 
-  // Re-load result if active file changes specifically (e.g. from internal logic?)
-  // Actually handleSelectionChange covers it.
-  // But if we just opened folder and setFileList, nothing happens until selection.
 
   const processOneOcr = async (file: File) => {
-    // Logic from handleRunOcr moved here
     const hash = await fileToHash(file);
     const imageDataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -99,12 +105,27 @@ export const App: React.FC = () => {
       reader.readAsDataURL(file);
     });
 
-    const html = await requestOcrHtml({
-      config: { baseUrl, model, apiKey },
-      promptType: "ocr_layout",
-      imageDataUrl,
-      customSystemPrompt: systemPrompt
-    });
+    let html = "";
+    let usedModel = "";
+
+    if (provider === "lmstudio") {
+      usedModel = lmModel;
+      html = await requestOcrHtml({
+        config: { baseUrl: lmBaseUrl, model: lmModel, apiKey: lmApiKey },
+        promptType: "ocr_layout",
+        imageDataUrl,
+        customSystemPrompt: systemPrompt
+      });
+    } else {
+      // Google
+      usedModel = googleModel;
+      html = await requestGeminiOcr({
+        config: { apiKey: googleApiKey, model: googleModel },
+        promptType: "ocr_layout",
+        imageDataUrl,
+        customSystemPrompt: systemPrompt
+      });
+    }
 
     const mdWith = htmlToMarkdown(html, true);
     const mdWithout = htmlToMarkdown(html, false);
@@ -113,7 +134,7 @@ export const App: React.FC = () => {
     const result: OcrStoredResult = {
       key: hash,
       imageName: file.name,
-      model,
+      model: usedModel,
       createdAt: Date.now(),
       html,
       markdownWithHeaders: mdWith,
@@ -133,17 +154,30 @@ export const App: React.FC = () => {
     let skippedCount = 0;
     let errorCount = 0;
 
-    for (const file of selectedFiles) {
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+
       try {
+        // Check Skip
         if (skipExisting) {
           const existing = await loadOcrResultFromFs(workDirHandle, file.name);
           if (existing) {
             skippedCount++;
-            // If this is the active file, show it
             if (file === activeFile) {
               setOcrResult(existing);
             }
             continue;
+          }
+        }
+
+        // Rate Limiting for Google - 5 RPM = 1 request per 12 seconds
+        // We apply delay BEFORE request, but only if it's not the very first request of the batch (or maybe always if we want to be safe considering prev batches?)
+        // Safest: always wait 12s between calls.
+        if (provider === "google" && i > 0 && processedCount > 0) {
+          // Wait 12 seconds
+          for (let s = 12; s > 0; s--) {
+            setStatus(`Rate limit: Waiting ${s}s...`);
+            await new Promise(r => setTimeout(r, 1000));
           }
         }
 
@@ -159,13 +193,15 @@ export const App: React.FC = () => {
         processedCount++;
       } catch (e) {
         console.error(`Error processing ${file.name}`, e);
+        setStatus(`Error: ${e instanceof Error ? e.message : "Unknown"}`);
+        // Wait a bit on error to read it, then continue? Or just count error.
         errorCount++;
       }
     }
 
     setStatus(`Batch Complete. Processed: ${processedCount}, Skipped: ${skippedCount}, Errors: ${errorCount}`);
     setIsProcessing(false);
-  }, [selectedFiles, workDirHandle, baseUrl, model, apiKey, systemPrompt, skipExisting, activeFile]);
+  }, [selectedFiles, workDirHandle, provider, lmBaseUrl, lmModel, lmApiKey, googleApiKey, googleModel, systemPrompt, skipExisting, activeFile]);
 
   const handleSplitPages = useCallback(async () => {
     if (selectedFiles.length === 0 || !workDirHandle) return;
@@ -246,12 +282,22 @@ export const App: React.FC = () => {
       <SettingsDialog
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
-        baseUrl={baseUrl}
-        setBaseUrl={setBaseUrl}
-        model={model}
-        setModel={setModel}
-        apiKey={apiKey}
-        setApiKey={setApiKey}
+
+        provider={provider}
+        setProvider={setProvider}
+
+        baseUrl={lmBaseUrl}
+        setBaseUrl={setLmBaseUrl}
+        lmModel={lmModel}
+        setLmModel={setLmModel}
+        lmApiKey={lmApiKey}
+        setLmApiKey={setLmApiKey}
+
+        googleApiKey={googleApiKey}
+        setGoogleApiKey={setGoogleApiKey}
+        googleModel={googleModel}
+        setGoogleModel={setGoogleModel}
+
         systemPrompt={systemPrompt}
         setSystemPrompt={setSystemPrompt}
         defaultSystemPrompt={getPrompt("ocr_layout")}

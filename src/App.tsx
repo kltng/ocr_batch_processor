@@ -11,6 +11,8 @@ import {
   clearAllOcrResults
 } from "./storage/ocrStore";
 import { exportAllToDirectory, makeZipBlob } from "./export/exportAll";
+import { convertPdfToJpegs, splitPdfPages, splitImage } from "./lib/pdfTools";
+import { getOrCreateSubdirectory, writeFile } from "./storage/filesystem";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
@@ -62,11 +64,22 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+// Define FileSystemDirHandle type locally if needed or assume it's global
+// In this context we treat it as 'any' or rely on global availability for simplicity in the main file
+// effectively letting TS check it against the dom lib.
+
 export const App: React.FC = () => {
   const [baseUrl, setBaseUrl] = useState("http://localhost:1234");
   const [model, setModel] = useState("chandra-ocr");
   const [apiKey, setApiKey] = useState("lm-studio");
   const [systemPrompt, setSystemPrompt] = useState(getPrompt("ocr_layout"));
+
+  // Storage / Folder Mode
+  const [workDirHandle, setWorkDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [workDirFiles, setWorkDirFiles] = useState<File[]>([]);
+
+  // Tabs
+  const [activeTab, setActiveTab] = useState<"ocr" | "pdf_convert" | "split_pages">("ocr");
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [format, setFormat] = useState<OutputFormat>("all");
@@ -460,6 +473,67 @@ export const App: React.FC = () => {
     [apiKey, baseUrl, batchFiles, format, model, upsertGalleryItem]
   );
 
+  const handleOpenFolder = useCallback(async () => {
+    try {
+      const handle = await (window as any).showDirectoryPicker();
+      setWorkDirHandle(handle);
+      setConnectionStatus("Opened folder: " + handle.name);
+
+      // List files
+      const files: File[] = [];
+      for await (const entry of handle.values()) {
+        if (entry.kind === "file") {
+          const file = await entry.getFile();
+          if (!file.name.startsWith(".")) {
+            files.push(file);
+          }
+        }
+      }
+      setWorkDirFiles(files.sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const handleConvertPdf = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedFile || !workDirHandle) return;
+    setStatus("Converting PDF...");
+    setIsRunning(true);
+    try {
+      await convertPdfToJpegs(selectedFile, workDirHandle);
+      setStatus("Conversion Complete! (Saved to converted_jpegs)");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Conversion failed");
+      setStatus("Error");
+    } finally {
+      setIsRunning(false);
+    }
+  }, [selectedFile, workDirHandle]);
+
+  const handleSplitPages = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedFile || !workDirHandle) return;
+    setStatus("Splitting Pages...");
+    setIsRunning(true);
+    try {
+      if (selectedFile.type === "application/pdf") {
+        await splitPdfPages(selectedFile, workDirHandle);
+      } else if (selectedFile.type.startsWith("image/")) {
+        await splitImage(selectedFile, workDirHandle);
+      } else {
+        throw new Error("Unsupported file type for splitting");
+      }
+      setStatus("Splitting Complete! (Saved to split_jpegs)");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Splitting failed");
+      setStatus("Error");
+    } finally {
+      setIsRunning(false);
+    }
+  }, [selectedFile, workDirHandle]);
+
+
   const imagePreviewUrl = selectedFile
     ? URL.createObjectURL(selectedFile)
     : null;
@@ -717,73 +791,183 @@ export const App: React.FC = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleRunOcr} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="file">Image file</Label>
-                  <Input
-                    id="file"
-                    type="file"
-                    accept=".png,.jpg,.jpeg,.tiff,.tif"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] ?? null;
-                      setSelectedFile(file);
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    PNG, JPG, JPEG, or TIFF formats are supported.
-                  </p>
+              {workDirHandle ? (
+                <div className="mb-4 p-2 bg-muted/20 rounded border border-border text-xs">
+                  <p className="font-semibold">Working in: {workDirHandle.name}</p>
+                  <p>Outputs will be saved to this folder.</p>
                 </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="format">Output format</Label>
-                  <select
-                    id="format"
-                    value={format}
-                    onChange={(e) =>
-                      setFormat(e.target.value as OutputFormat)
-                    }
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    <option value="all">All (HTML + markdown)</option>
-                    <option value="markdown_with_headers">
-                      Markdown with headers/footers
-                    </option>
-                    <option value="markdown">
-                      Markdown without headers/footers
-                    </option>
-                    <option value="html">HTML only</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Button
-                    type="submit"
-                    disabled={isRunning || !selectedFile}
-                  >
-                    {isRunning ? "Processing…" : "Run OCR"}
+              ) : (
+                <div className="mb-4">
+                  <Button onClick={handleOpenFolder} variant="outline" className="w-full">
+                    📂 Open Working Folder (Required for saving to disk)
                   </Button>
-                  <span className="text-xs text-muted-foreground">
-                    {status}
-                  </span>
                 </div>
+              )}
 
-                {error && (
-                  <p className="text-xs text-destructive">{error}</p>
-                )}
+              <div className="flex gap-2 mb-4 border-b border-border/50 pb-2">
+                <button
+                  onClick={() => setActiveTab("ocr")}
+                  className={`px-3 py-1 text-sm font-medium rounded-md ${activeTab === "ocr" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                >
+                  OCR
+                </button>
+                <button
+                  onClick={() => setActiveTab("pdf_convert")}
+                  className={`px-3 py-1 text-sm font-medium rounded-md ${activeTab === "pdf_convert" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                >
+                  PDF to JPEG
+                </button>
+                <button
+                  onClick={() => setActiveTab("split_pages")}
+                  className={`px-3 py-1 text-sm font-medium rounded-md ${activeTab === "split_pages" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                >
+                  Split Pages
+                </button>
+              </div>
 
-                {imagePreviewUrl && (
-                  <div className="pt-1 space-y-1.5">
-                    <p className="text-xs text-muted-foreground">Preview</p>
-                    <div className="overflow-hidden rounded-lg border border-border/80 bg-black/20">
-                      <img
-                        src={imagePreviewUrl}
-                        alt="Selected input"
-                        className="block max-h-64 w-full object-contain"
+              {activeTab === "ocr" && (
+                <form onSubmit={handleRunOcr} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="file">Input File</Label>
+                    {workDirHandle ? (
+                      <select
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                        onChange={(e) => {
+                          const file = workDirFiles.find(f => f.name === e.target.value) || null;
+                          setSelectedFile(file);
+                        }}
+                      >
+                        <option value="">Select a file from folder...</option>
+                        {workDirFiles.map(f => (
+                          <option key={f.name} value={f.name}>{f.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        id="file"
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.tiff,.tif"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          setSelectedFile(file);
+                        }}
                       />
-                    </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      PNG, JPG, JPEG, or TIFF formats are supported.
+                    </p>
                   </div>
-                )}
-              </form>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="format">Output format</Label>
+                    <select
+                      id="format"
+                      value={format}
+                      onChange={(e) =>
+                        setFormat(e.target.value as OutputFormat)
+                      }
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      <option value="all">All (HTML + markdown)</option>
+                      <option value="markdown_with_headers">
+                        Markdown with headers/footers
+                      </option>
+                      <option value="markdown">
+                        Markdown without headers/footers
+                      </option>
+                      <option value="html">HTML only</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="submit"
+                      disabled={isRunning || !selectedFile}
+                    >
+                      {isRunning ? "Processing…" : "Run OCR"}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {status}
+                    </span>
+                  </div>
+
+                  {error && (
+                    <p className="text-xs text-destructive">{error}</p>
+                  )}
+
+                  {imagePreviewUrl && (
+                    <div className="pt-1 space-y-1.5">
+                      <p className="text-xs text-muted-foreground">Preview</p>
+                      <div className="overflow-hidden rounded-lg border border-border/80 bg-black/20">
+                        <img
+                          src={imagePreviewUrl}
+                          alt="Selected input"
+                          className="block max-h-64 w-full object-contain"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </form>
+              )}
+
+              {activeTab === "pdf_convert" && (
+                <form onSubmit={handleConvertPdf} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label>Input PDF</Label>
+                    {workDirHandle ? (
+                      <select
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                        onChange={(e) => {
+                          const file = workDirFiles.find(f => f.name === e.target.value) || null;
+                          setSelectedFile(file);
+                        }}
+                      >
+                        <option value="">Select a PDF...</option>
+                        {workDirFiles.filter(f => f.type === "application/pdf" || f.name.endsWith(".pdf")).map(f => (
+                          <option key={f.name} value={f.name}>{f.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="text-sm text-yellow-500">Please select a folder first to use this feature.</div>
+                    )}
+                  </div>
+                  <Button type="submit" disabled={!workDirHandle || !selectedFile || isRunning}>
+                    {isRunning ? "Converting..." : "Convert to JPEGs"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">{status}</p>
+                  {error && <p className="text-xs text-destructive">{error}</p>}
+                </form>
+              )}
+
+              {activeTab === "split_pages" && (
+                <form onSubmit={handleSplitPages} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label>Input File (PDF/Image)</Label>
+                    {workDirHandle ? (
+                      <select
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+                        onChange={(e) => {
+                          const file = workDirFiles.find(f => f.name === e.target.value) || null;
+                          setSelectedFile(file);
+                        }}
+                      >
+                        <option value="">Select a file...</option>
+                        {workDirFiles.map(f => (
+                          <option key={f.name} value={f.name}>{f.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="text-sm text-yellow-500">Please select a folder first to use this feature.</div>
+                    )}
+                  </div>
+                  <Button type="submit" disabled={!workDirHandle || !selectedFile || isRunning}>
+                    {isRunning ? "Splitting..." : "Split Pages"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">{status}</p>
+                  {error && <p className="text-xs text-destructive">{error}</p>}
+                </form>
+              )}
+
             </CardContent>
           </Card>
 
@@ -1053,7 +1237,7 @@ export const App: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </main >
+    </div >
   );
 };

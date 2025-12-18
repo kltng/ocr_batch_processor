@@ -7,7 +7,7 @@ import { renderBboxesFromHtml } from "./ocr/renderBboxes";
 import { fileToHash } from "./lib/hash";
 import { OcrStoredResult } from "./storage/ocrStore";
 import { loadOcrResultFromFs, saveOcrResultToFs } from "./storage/ocrFileSystem";
-import { convertPdfToJpegs, splitPdfPages, splitImage } from "./lib/pdfTools";
+import { convertPdfToJpegs, splitPdfPages, splitImage, SplitOrder } from "./lib/pdfTools";
 
 import { WorkspaceLayout } from "./components/layout/WorkspaceLayout";
 import { FileSidebar } from "./components/FileSidebar";
@@ -48,6 +48,7 @@ export const App: React.FC = () => {
   const [status, setStatus] = useState("Idle");
   const [isProcessing, setIsProcessing] = useState(false);
   const [skipExisting, setSkipExisting] = useState(false);
+  const [splitOrder, setSplitOrder] = useState<SplitOrder>("LR");
 
   // --- Handlers ---
   const refreshFileList = useCallback(async (handle: FileSystemDirectoryHandle) => {
@@ -81,7 +82,10 @@ export const App: React.FC = () => {
     // If we selected a single new file (or multiple), default view to the last one
     const newActive = files.length > 0 ? files[files.length - 1] : null;
 
-    if (newActive && newActive !== activeFile) {
+    // Compare by file name instead of object identity for reliable detection
+    const isNewFile = newActive && (!activeFile || newActive.name !== activeFile.name);
+
+    if (isNewFile) {
       setOcrResult(null); // Reset prev result
       setStatus("Idle");
       if (workDirHandle) {
@@ -165,7 +169,8 @@ export const App: React.FC = () => {
           const existing = await loadOcrResultFromFs(workDirHandle, file.name);
           if (existing) {
             skippedCount++;
-            if (file === activeFile) {
+            // Compare by file name instead of object identity
+            if (activeFile && file.name === activeFile.name) {
               setOcrResult(existing);
             }
             continue;
@@ -188,7 +193,8 @@ export const App: React.FC = () => {
         const result = await processOneOcr(file);
         await saveOcrResultToFs(workDirHandle, file.name, result);
 
-        if (file === activeFile) {
+        // Compare by file name instead of object identity to ensure UI updates
+        if (activeFile && file.name === activeFile.name) {
           setOcrResult(result);
         }
 
@@ -214,9 +220,9 @@ export const App: React.FC = () => {
       setStatus(`Splitting ${file.name}...`);
       try {
         if (file.type === "application/pdf") {
-          await splitPdfPages(file, workDirHandle);
+          await splitPdfPages(file, workDirHandle, splitOrder);
         } else {
-          await splitImage(file, workDirHandle);
+          await splitImage(file, workDirHandle, splitOrder);
         }
       } catch (e) {
         console.error(e);
@@ -226,7 +232,7 @@ export const App: React.FC = () => {
     setStatus("Batch Split Complete. Refreshing...");
     await refreshFileList(workDirHandle);
     setIsProcessing(false);
-  }, [selectedFiles, workDirHandle, refreshFileList]);
+  }, [selectedFiles, workDirHandle, refreshFileList, splitOrder]);
 
   const handleConvertPdf = useCallback(async () => {
     if (selectedFiles.length === 0 || !workDirHandle) return;
@@ -272,6 +278,8 @@ export const App: React.FC = () => {
             skipExisting={skipExisting}
             setSkipExisting={setSkipExisting}
             onOpenHelp={() => setShowInstructions(true)}
+            splitOrder={splitOrder}
+            setSplitOrder={setSplitOrder}
           />
         }
         content={

@@ -1,5 +1,6 @@
 import React from "react";
 import { Button } from "./ui/button";
+import { SplitOrder } from "../lib/pdfTools";
 
 interface ActionToolbarProps {
     isProcessing: boolean;
@@ -12,6 +13,8 @@ interface ActionToolbarProps {
     skipExisting: boolean;
     setSkipExisting: (val: boolean) => void;
     onOpenHelp: () => void;
+    splitOrder: SplitOrder;
+    setSplitOrder: (val: SplitOrder) => void;
 }
 
 export const ActionToolbar: React.FC<ActionToolbarProps> = ({
@@ -25,6 +28,8 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
     skipExisting,
     setSkipExisting,
     onOpenHelp,
+    splitOrder,
+    setSplitOrder,
 }) => {
     const hasSelection = selectedCount > 0;
 
@@ -50,6 +55,16 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
                 >
                     {`Split Pages${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
                 </Button>
+
+                <select
+                    value={splitOrder}
+                    onChange={(e) => setSplitOrder(e.target.value as SplitOrder)}
+                    className="h-8 px-2 rounded border border-input bg-background text-xs cursor-pointer"
+                    title="Page reading order: Left-to-Right or Right-to-Left"
+                >
+                    <option value="LR">L→R</option>
+                    <option value="RL">R→L</option>
+                </select>
 
                 <Button
                     variant="outline"
@@ -90,3 +105,4 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
         </div>
     );
 };
+

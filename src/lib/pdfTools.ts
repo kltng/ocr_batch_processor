@@ -49,9 +49,12 @@ export async function convertPdfToJpegs(
     }
 }
 
+export type SplitOrder = "LR" | "RL";
+
 export async function splitPdfPages(
     file: File,
-    outputDir: FileSystemDirectoryHandle
+    outputDir: FileSystemDirectoryHandle,
+    splitOrder: SplitOrder = "LR"
 ): Promise<void> {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
@@ -74,17 +77,20 @@ export async function splitPdfPages(
             viewport: viewport,
         } as any).promise;
 
+        const pageNum = String(i).padStart(4, "0");
         await splitAndSaveCanvas(
             canvas,
             targetDir,
-            `${file.name.replace(/\.pdf$/i, "")}_page_${i}`
+            `${file.name.replace(/\.pdf$/i, "")}_page_${pageNum}`,
+            splitOrder
         );
     }
 }
 
 export async function splitImage(
     file: File,
-    outputDir: FileSystemDirectoryHandle
+    outputDir: FileSystemDirectoryHandle,
+    splitOrder: SplitOrder = "LR"
 ): Promise<void> {
     const targetDir = await getOrCreateSubdirectory(outputDir, "split_jpegs");
     const bitmap = await createImageBitmap(file);
@@ -100,17 +106,24 @@ export async function splitImage(
     // Use original extension or default to jpg, but request asked for jpegs output generally.
     // We'll stick to jpg output for consistency with the folder name "split_jpegs".
     const baseName = file.name.replace(/\.[^/.]+$/, "");
-    await splitAndSaveCanvas(canvas, targetDir, baseName);
+    await splitAndSaveCanvas(canvas, targetDir, baseName, splitOrder);
 }
 
 async function splitAndSaveCanvas(
     canvas: HTMLCanvasElement,
     targetDir: FileSystemDirectoryHandle,
-    baseName: string
+    baseName: string,
+    splitOrder: SplitOrder = "LR"
 ): Promise<void> {
     const width = canvas.width;
     const height = canvas.height;
     const mid = Math.floor(width / 2);
+
+    // Determine which suffix goes to which side based on splitOrder
+    // LR: Left is first (A), Right is second (B)
+    // RL: Right is first (A), Left is second (B)
+    const leftSuffix = splitOrder === "LR" ? "A" : "B";
+    const rightSuffix = splitOrder === "LR" ? "B" : "A";
 
     // Left Page
     const canvasL = document.createElement("canvas");
@@ -123,7 +136,7 @@ async function splitAndSaveCanvas(
         canvasL.toBlob(resolve, "image/jpeg", 0.9)
     );
     if (blobL) {
-        await writeFile(targetDir, `${baseName}_L.jpg`, blobL);
+        await writeFile(targetDir, `${baseName}_${leftSuffix}.jpg`, blobL);
     }
 
     // Right Page
@@ -138,6 +151,7 @@ async function splitAndSaveCanvas(
         canvasR.toBlob(resolve, "image/jpeg", 0.9)
     );
     if (blobR) {
-        await writeFile(targetDir, `${baseName}_R.jpg`, blobR);
+        await writeFile(targetDir, `${baseName}_${rightSuffix}.jpg`, blobR);
     }
 }
+

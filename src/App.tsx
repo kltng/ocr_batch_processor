@@ -17,7 +17,12 @@ import { ActionToolbar } from "./components/ActionToolbar";
 import { SettingsDialog, OcrProvider } from "./components/SettingsDialog";
 import { InstructionsPage } from "./components/InstructionsPage";
 
+const isHttpsOrigin = typeof window !== "undefined" && window.location.protocol === "https:";
+const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+const isDeployedWithLocalProvider = isHttpsOrigin && !isLocalhost;
+
 export const App: React.FC = () => {
+  const [showHttpsWarning, setShowHttpsWarning] = useState(isDeployedWithLocalProvider);
   // --- Config State ---
   const [provider, setProvider] = useState<OcrProvider>("ollama");
 
@@ -270,6 +275,26 @@ export const App: React.FC = () => {
 
   return (
     <>
+      {showHttpsWarning && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-amber-500 text-amber-950 px-4 py-3 text-sm font-medium flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span>⚠️</span>
+            <span>
+              <strong>Local OCR unavailable:</strong> You're viewing the deployed app via HTTPS. 
+              Local providers (LM Studio, Ollama) require running locally. 
+              <a href="https://github.com/kltng/ocr_batch_processor#local-development" target="_blank" rel="noreferrer" className="underline ml-1">
+                Run locally
+              </a> or use Google Gemini.
+            </span>
+          </div>
+          <button 
+            onClick={() => setShowHttpsWarning(false)} 
+            className="ml-4 px-2 py-1 hover:bg-amber-600 rounded text-xs"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <WorkspaceLayout
         sidebar={
           <FileSidebar

@@ -3,6 +3,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
+import { PromptProfile, PROMPT_PROFILES } from "../ocr/prompts";
 
 export type OcrProvider = "lmstudio" | "google" | "ollama";
 
@@ -34,6 +35,10 @@ interface SettingsDialogProps {
     ollamaModel: string;
     setOllamaModel: (val: string) => void;
 
+    // Prompt Profile
+    promptProfile: PromptProfile;
+    setPromptProfile: (val: PromptProfile) => void;
+
     // Shared
     systemPrompt: string;
     setSystemPrompt: (val: string) => void;
@@ -59,6 +64,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setOllamaBaseUrl,
     ollamaModel,
     setOllamaModel,
+    promptProfile,
+    setPromptProfile,
     systemPrompt,
     setSystemPrompt,
     defaultSystemPrompt,
@@ -214,6 +221,25 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     )}
 
                     <div className="h-px bg-border my-2" />
+
+                    {/* Prompt Profile Selection */}
+                    <div className="space-y-2">
+                        <Label>Prompt Profile</Label>
+                        <select
+                            value={promptProfile}
+                            onChange={(e) => setPromptProfile(e.target.value as PromptProfile)}
+                            className="w-full px-3 py-2 border rounded-md bg-background text-sm"
+                        >
+                            {Object.entries(PROMPT_PROFILES).map(([key, profile]) => (
+                                <option key={key} value={key}>
+                                    {profile.name}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-muted-foreground">
+                            {PROMPT_PROFILES[promptProfile].description}
+                        </p>
+                    </div>
 
                     {/* Shared System Prompt */}
                     <div className="space-y-2">

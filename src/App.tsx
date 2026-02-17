@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { requestOcrHtml } from "./lmStudioClient";
 import { requestGeminiOcr } from "./geminiClient";
 import { requestOllamaOcr } from "./ollamaClient";
-import { getPrompt } from "./ocr/prompts";
+import { getPromptByProfile, PromptProfile, PROMPT_PROFILES } from "./ocr/prompts";
 import { htmlToMarkdown } from "./ocr/htmlToMarkdown";
 import { renderBboxesFromHtml } from "./ocr/renderBboxes";
 import { fileToHash } from "./lib/hash";
@@ -46,8 +46,11 @@ export const App: React.FC = () => {
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434");
   const [ollamaModel, setOllamaModel] = useState("glm-ocr");
 
+  // Prompt Profile
+  const [promptProfile, setPromptProfile] = useState<PromptProfile>("glm_ocr_markdown");
+
   // Shared
-  const [systemPrompt, setSystemPrompt] = useState(getPrompt("ocr_layout"));
+  const [systemPrompt, setSystemPrompt] = useState(getPromptByProfile("glm_ocr_markdown"));
   const [showSettings, setShowSettings] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
 
@@ -60,6 +63,11 @@ export const App: React.FC = () => {
   const activeFile = selectedFiles.length > 0 ? selectedFiles[selectedFiles.length - 1] : null;
 
   const [ocrResult, setOcrResult] = useState<OcrStoredResult | null>(null);
+
+  // Sync systemPrompt with promptProfile
+  useEffect(() => {
+    setSystemPrompt(getPromptByProfile(promptProfile));
+  }, [promptProfile]);
 
   // --- Process State ---
   const [status, setStatus] = useState("Idle");
@@ -85,6 +93,17 @@ export const App: React.FC = () => {
   const handleOpenFolder = useCallback(async () => {
     try {
       const handle = await (window as any).showDirectoryPicker();
+
+      // Request readwrite permission during user activation (folder selection)
+      const handleWithPermission = handle as FileSystemDirectoryHandle & {
+        requestPermission: (opts: { mode: string }) => Promise<PermissionState>;
+      };
+      const permission = await handleWithPermission.requestPermission({ mode: "readwrite" });
+      if (permission !== "granted") {
+        setStatus("Write permission denied - OCR results cannot be saved");
+        return;
+      }
+
       setWorkDirHandle(handle);
       await refreshFileList(handle);
     } catch (e) {
@@ -360,9 +379,12 @@ export const App: React.FC = () => {
         ollamaModel={ollamaModel}
         setOllamaModel={setOllamaModel}
 
+        promptProfile={promptProfile}
+        setPromptProfile={setPromptProfile}
+
         systemPrompt={systemPrompt}
         setSystemPrompt={setSystemPrompt}
-        defaultSystemPrompt={getPrompt("ocr_layout")}
+        defaultSystemPrompt={PROMPT_PROFILES[promptProfile].prompt}
       />
 
       <InstructionsPage

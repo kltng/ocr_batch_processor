@@ -102,9 +102,39 @@ ${BASE_GUIDELINES}
 Only use the specified tags and attributes. Output clean, valid HTML that accurately represents the input image.
 `.trim();
 
+export const GLM_OCR_PROMPT = `
+Recognize the text in the image and output in Markdown format.
+Preserve the original layout (headings/paragraphs/tables/formulas).
+Do not fabricate content that does not exist in the image.
+`.trim();
+
+export type PromptProfile = "chandra_html_layout" | "chandra_html" | "glm_ocr_markdown";
+
+export const PROMPT_PROFILES: Record<PromptProfile, { name: string; description: string; prompt: string }> = {
+  chandra_html_layout: {
+    name: "Chandra-OCR (HTML + Layout)",
+    description: "Full HTML output with bounding boxes and layout blocks. Best for Chandra-OCR, Qwen-VL models.",
+    prompt: OCR_LAYOUT_PROMPT
+  },
+  chandra_html: {
+    name: "Chandra-OCR (HTML)",
+    description: "HTML output without bounding boxes. Good for general vision-language models.",
+    prompt: OCR_PROMPT
+  },
+  glm_ocr_markdown: {
+    name: "GLM-OCR (Markdown)",
+    description: "Simple Markdown output. Optimized for GLM-OCR via Ollama.",
+    prompt: GLM_OCR_PROMPT
+  }
+};
+
 export type PromptType = "ocr_layout" | "ocr";
 
 export function getPrompt(promptType: PromptType): string {
   return promptType === "ocr_layout" ? OCR_LAYOUT_PROMPT : OCR_PROMPT;
+}
+
+export function getPromptByProfile(profile: PromptProfile): string {
+  return PROMPT_PROFILES[profile].prompt;
 }
 

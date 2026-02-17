@@ -19,7 +19,7 @@ import { InstructionsPage } from "./components/InstructionsPage";
 
 export const App: React.FC = () => {
   // --- Config State ---
-  const [provider, setProvider] = useState<OcrProvider>("lmstudio");
+  const [provider, setProvider] = useState<OcrProvider>("ollama");
 
   // LM Studio Config
   const [lmBaseUrl, setLmBaseUrl] = useState("http://localhost:1234");

@@ -17,12 +17,19 @@ import { ActionToolbar } from "./components/ActionToolbar";
 import { SettingsDialog, OcrProvider } from "./components/SettingsDialog";
 import { InstructionsPage } from "./components/InstructionsPage";
 
-const isHttpsOrigin = typeof window !== "undefined" && window.location.protocol === "https:";
-const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-const isDeployedWithLocalProvider = isHttpsOrigin && !isLocalhost;
+function checkIsDeployedWithLocalProvider(): boolean {
+  if (typeof window === "undefined") return false;
+  const isHttps = window.location.protocol === "https:";
+  const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  return isHttps && !isLocalhost;
+}
 
 export const App: React.FC = () => {
-  const [showHttpsWarning, setShowHttpsWarning] = useState(isDeployedWithLocalProvider);
+  const [showHttpsWarning, setShowHttpsWarning] = useState(false);
+
+  useEffect(() => {
+    setShowHttpsWarning(checkIsDeployedWithLocalProvider());
+  }, []);
   // --- Config State ---
   const [provider, setProvider] = useState<OcrProvider>("ollama");
 

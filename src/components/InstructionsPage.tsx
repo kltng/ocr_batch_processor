@@ -34,7 +34,7 @@ export const InstructionsPage: React.FC<InstructionsPageProps> = ({ isOpen, onCl
                         <h3 className="text-xl font-bold mb-3">Welcome to LM Studio OCR</h3>
                         <p className="text-muted-foreground leading-relaxed">
                             This application allows you to perform privacy-focused, local OCR (Optical Character Recognition) using
-                            <strong> LM Studio</strong>, or cloud-based OCR using <strong>Google Gemini</strong>.
+                            <strong> LM Studio</strong>, <strong>Ollama</strong>, or cloud-based OCR using <strong>Google Gemini</strong>.
                             Convert your documents, PDFs, and images into clean, structured Markdown or HTML with bounding boxes.
                         </p>
                     </section>
@@ -93,6 +93,40 @@ export const InstructionsPage: React.FC<InstructionsPageProps> = ({ isOpen, onCl
                                     <strong>Select Model:</strong> Choose a model like <code>gemini-2.0-flash-exp</code> or <code>gemini-1.5-flash</code>.
                                 </li>
                             </ol>
+                        </div>
+                    </section>
+
+                    {/* Section: Ollama */}
+                    <section className="space-y-4">
+                        <h3 className="text-xl font-bold flex items-center gap-2">
+                            <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-sm">Local</span>
+                            Using with Ollama
+                        </h3>
+                        <div className="bg-muted/50 p-6 rounded-lg border space-y-4">
+                            <ol className="list-decimal list-inside space-y-3 text-sm md:text-base">
+                                <li>
+                                    <strong>Install Ollama:</strong> Visit <a href="https://ollama.com" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">ollama.com</a> and install the application.
+                                </li>
+                                <li>
+                                    <strong>Pull a Vision Model:</strong> Run the following command to get GLM-OCR (recommended for best OCR quality):
+                                    <pre className="bg-muted p-2 rounded mt-1 text-xs overflow-x-auto">ollama pull glm-ocr</pre>
+                                    <p className="text-muted-foreground mt-1">Alternative vision models: <code>llava</code>, <code>minicpm-v</code></p>
+                                </li>
+                                <li>
+                                    <strong>Ollama Auto-Starts:</strong> Ollama runs automatically in the background on port 11434.
+                                </li>
+                                <li>
+                                    <strong>Connect App:</strong> In this app, click <strong>Settings (⚙️)</strong>, select <strong>Ollama</strong>, and ensure:
+                                    <ul className="list-disc list-inside ml-6 mt-1 text-muted-foreground">
+                                        <li>Base URL is <code>http://localhost:11434</code></li>
+                                        <li>Model is <code>glm-ocr</code> (or your pulled model name)</li>
+                                    </ul>
+                                </li>
+                            </ol>
+                            <div className="rounded-md bg-blue-50 dark:bg-blue-950 p-3 text-xs">
+                                <strong className="text-blue-700 dark:text-blue-300">Why GLM-OCR?</strong>
+                                <p className="text-blue-600 dark:text-blue-400 mt-1">GLM-OCR is a specialized OCR model that excels at document understanding, table recognition, and formula extraction. It's optimized for accuracy and works great with this application.</p>
+                            </div>
                         </div>
                     </section>
 

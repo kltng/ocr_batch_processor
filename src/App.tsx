@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { requestOcrHtml } from "./lmStudioClient";
 import { requestGeminiOcr } from "./geminiClient";
+import { requestOllamaOcr } from "./ollamaClient";
 import { getPrompt } from "./ocr/prompts";
 import { htmlToMarkdown } from "./ocr/htmlToMarkdown";
 import { renderBboxesFromHtml } from "./ocr/renderBboxes";
@@ -28,6 +29,10 @@ export const App: React.FC = () => {
   // Google Config
   const [googleApiKey, setGoogleApiKey] = useState("");
   const [googleModel, setGoogleModel] = useState("gemini-2.5-flash");
+
+  // Ollama Config
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434");
+  const [ollamaModel, setOllamaModel] = useState("glm-ocr");
 
   // Shared
   const [systemPrompt, setSystemPrompt] = useState(getPrompt("ocr_layout"));
@@ -122,8 +127,7 @@ export const App: React.FC = () => {
         imageDataUrl,
         customSystemPrompt: systemPrompt
       });
-    } else {
-      // Google
+    } else if (provider === "google") {
       usedModel = googleModel;
       html = await requestGeminiOcr({
         config: { apiKey: googleApiKey, model: googleModel },
@@ -131,6 +135,16 @@ export const App: React.FC = () => {
         imageDataUrl,
         customSystemPrompt: systemPrompt
       });
+    } else if (provider === "ollama") {
+      usedModel = ollamaModel;
+      html = await requestOllamaOcr({
+        config: { baseUrl: ollamaBaseUrl, model: ollamaModel },
+        promptType: "ocr_layout",
+        imageDataUrl,
+        customSystemPrompt: systemPrompt
+      });
+    } else {
+      throw new Error(`Unknown provider: ${provider}`);
     }
 
     const mdWith = htmlToMarkdown(html, true);
@@ -209,7 +223,7 @@ export const App: React.FC = () => {
 
     setStatus(`Batch Complete. Processed: ${processedCount}, Skipped: ${skippedCount}, Errors: ${errorCount}`);
     setIsProcessing(false);
-  }, [selectedFiles, workDirHandle, provider, lmBaseUrl, lmModel, lmApiKey, googleApiKey, googleModel, systemPrompt, skipExisting, activeFile]);
+  }, [selectedFiles, workDirHandle, provider, lmBaseUrl, lmModel, lmApiKey, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, skipExisting, activeFile]);
 
   const handleSplitPages = useCallback(async () => {
     if (selectedFiles.length === 0 || !workDirHandle) return;
@@ -308,6 +322,11 @@ export const App: React.FC = () => {
         setGoogleApiKey={setGoogleApiKey}
         googleModel={googleModel}
         setGoogleModel={setGoogleModel}
+
+        ollamaBaseUrl={ollamaBaseUrl}
+        setOllamaBaseUrl={setOllamaBaseUrl}
+        ollamaModel={ollamaModel}
+        setOllamaModel={setOllamaModel}
 
         systemPrompt={systemPrompt}
         setSystemPrompt={setSystemPrompt}

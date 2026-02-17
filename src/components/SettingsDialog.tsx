@@ -4,7 +4,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 
-export type OcrProvider = "lmstudio" | "google";
+export type OcrProvider = "lmstudio" | "google" | "ollama";
 
 interface SettingsDialogProps {
     isOpen: boolean;
@@ -28,6 +28,12 @@ interface SettingsDialogProps {
     googleModel: string;
     setGoogleModel: (val: string) => void;
 
+    // Ollama Config
+    ollamaBaseUrl: string;
+    setOllamaBaseUrl: (val: string) => void;
+    ollamaModel: string;
+    setOllamaModel: (val: string) => void;
+
     // Shared
     systemPrompt: string;
     setSystemPrompt: (val: string) => void;
@@ -49,6 +55,10 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setGoogleApiKey,
     googleModel,
     setGoogleModel,
+    ollamaBaseUrl,
+    setOllamaBaseUrl,
+    ollamaModel,
+    setOllamaModel,
     systemPrompt,
     setSystemPrompt,
     defaultSystemPrompt,
@@ -92,6 +102,16 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                     onChange={() => setProvider("google")}
                                 />
                                 <span className="text-sm">Google Gemini</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="provider"
+                                    value="ollama"
+                                    checked={provider === "ollama"}
+                                    onChange={() => setProvider("ollama")}
+                                />
+                                <span className="text-sm">Ollama</span>
                             </label>
                         </div>
                     </div>
@@ -159,6 +179,35 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                     value={googleModel}
                                     onChange={(e) => setGoogleModel(e.target.value)}
                                     placeholder="gemini-3-flash"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Ollama Fields */}
+                    {provider === "ollama" && (
+                        <div className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                            <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+                                <p>Requires Ollama running locally with a vision model installed.</p>
+                                <p>Recommended: <code>glm-ocr</code> for optimal OCR performance.</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="ollamaBaseUrl">Ollama Base URL</Label>
+                                <Input
+                                    id="ollamaBaseUrl"
+                                    value={ollamaBaseUrl}
+                                    onChange={(e) => setOllamaBaseUrl(e.target.value)}
+                                    placeholder="http://localhost:11434"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="ollamaModel">Model Name</Label>
+                                <Input
+                                    id="ollamaModel"
+                                    value={ollamaModel}
+                                    onChange={(e) => setOllamaModel(e.target.value)}
+                                    placeholder="glm-ocr"
                                 />
                             </div>
                         </div>

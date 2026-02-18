@@ -108,7 +108,78 @@ Preserve the original layout (headings/paragraphs/tables/formulas).
 Do not fabricate content that does not exist in the image.
 `.trim();
 
-export type PromptProfile = "chandra_html_layout" | "chandra_html" | "glm_ocr_markdown";
+export const GLM_OCR_LABELS = [
+  "abstract",
+  "algorithm",
+  "aside_text",
+  "chart",
+  "content",
+  "display_formula",
+  "doc_title",
+  "figure_title",
+  "footer",
+  "footnote",
+  "formula_number",
+  "header",
+  "image",
+  "inline_formula",
+  "number",
+  "paragraph_title",
+  "reference",
+  "reference_content",
+  "seal",
+  "table",
+  "text",
+  "vertical_text",
+  "vision_footnote"
+];
+
+export const GLM_OCR_LAYOUT_PROMPT = `
+You are an OCR assistant. Analyze the image and output a JSON array of document regions.
+
+**Output Format:**
+Return a JSON array where each element has:
+- "label": one of [${GLM_OCR_LABELS.join(", ")}]
+- "bbox": [x0, y0, x1, y1] normalized to 0-1000 based on image dimensions
+- "content": the text content in Markdown format
+
+**Label Descriptions:**
+- doc_title: Main document title
+- section_header / paragraph_title: Section or paragraph headings
+- content / text: Regular body text
+- abstract: Abstract section
+- table: Table content (output as Markdown table)
+- display_formula / inline_formula: Mathematical formulas (output as LaTeX)
+- figure_title: Figure captions
+- image / chart: Image or chart regions (describe briefly)
+- header / footer: Page headers and footers
+- footnote / vision_footnote: Footnotes
+- reference / reference_content: References and citations
+- seal: Seals or stamps
+- algorithm: Algorithm blocks
+- code: Code blocks
+
+**Guidelines:**
+1. Detect all text regions and assign appropriate labels
+2. Bounding boxes should tightly wrap each region
+3. Preserve reading order in the array
+4. For tables, output content as Markdown table syntax
+5. For formulas, use LaTeX notation
+6. Do not fabricate content not present in the image
+
+**Example Output:**
+[
+  {"label": "doc_title", "bbox": [100, 50, 900, 120], "content": "# Document Title"},
+  {"label": "paragraph_title", "bbox": [100, 150, 600, 180], "content": "## Introduction"},
+  {"label": "text", "bbox": [100, 200, 900, 400], "content": "This is the body text..."},
+  {"label": "table", "bbox": [100, 450, 900, 700], "content": "| Col1 | Col2 |\\n|------|------|\\n| A | B |"},
+  {"label": "display_formula", "bbox": [200, 750, 800, 820], "content": "$$E = mc^2$$"}
+]
+
+Output ONLY the JSON array, no additional text.
+`.trim();
+
+export type PromptProfile = "chandra_html_layout" | "chandra_html" | "glm_ocr_markdown" | "glm_ocr_layout";
 
 export const PROMPT_PROFILES: Record<PromptProfile, { name: string; description: string; prompt: string }> = {
   chandra_html_layout: {
@@ -125,6 +196,11 @@ export const PROMPT_PROFILES: Record<PromptProfile, { name: string; description:
     name: "GLM-OCR (Markdown)",
     description: "Simple Markdown output. Optimized for GLM-OCR via Ollama.",
     prompt: GLM_OCR_PROMPT
+  },
+  glm_ocr_layout: {
+    name: "GLM-OCR (JSON + Layout)",
+    description: "JSON output with labels and bounding boxes. Full layout detection for GLM-OCR.",
+    prompt: GLM_OCR_LAYOUT_PROMPT
   }
 };
 

@@ -47,10 +47,10 @@ export const App: React.FC = () => {
   const [ollamaModel, setOllamaModel] = useState("glm-ocr");
 
   // Prompt Profile
-  const [promptProfile, setPromptProfile] = useState<PromptProfile>("glm_ocr_markdown");
+  const [promptProfile, setPromptProfile] = useState<PromptProfile>("glm_ocr_layout");
 
   // Shared
-  const [systemPrompt, setSystemPrompt] = useState(getPromptByProfile("glm_ocr_markdown"));
+  const [systemPrompt, setSystemPrompt] = useState(getPromptByProfile("glm_ocr_layout"));
   const [showSettings, setShowSettings] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
 

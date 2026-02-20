@@ -14,20 +14,43 @@ export type OcrRequest = {
   customSystemPrompt?: string;
 };
 
-type ChatCompletionMessage = {
-  role: "system" | "user" | "assistant";
-  content:
-    | string
-    | Array<
-        | { type: "text"; text: string }
-        | { type: "image_url"; image_url: { url: string } }
-      >;
+type LmStudioInputMessage = {
+  type: "message";
+  content: string;
 };
 
-type ChatCompletionResponse = {
-  choices?: Array<{
-    message?: { content?: unknown };
+type LmStudioInputImage = {
+  type: "image";
+  data_url: string;
+};
+
+type LmStudioInput = LmStudioInputMessage | LmStudioInputImage;
+
+type LmStudioChatRequest = {
+  model: string;
+  input: LmStudioInput[];
+  system_prompt?: string;
+};
+
+type LmStudioChatResponse = {
+  output: Array<{
+    type: "message";
+    content: string;
   }>;
+};
+
+type LmStudioModelCapabilities = {
+  vision?: boolean;
+};
+
+type LmStudioModel = {
+  key: string;
+  type: string;
+  capabilities?: LmStudioModelCapabilities;
+};
+
+type LmStudioModelsResponse = {
+  data: LmStudioModel[];
 };
 
 export async function requestOcrHtml({
@@ -39,27 +62,16 @@ export async function requestOcrHtml({
   const { baseUrl, model, apiKey } = config;
 
   const trimmedBase = baseUrl.replace(/\/+$/, "");
-  const endpoint = `${trimmedBase}/v1/chat/completions`;
+  const endpoint = `${trimmedBase}/api/v1/chat`;
 
-  const messages: ChatCompletionMessage[] = [
+  const input: LmStudioInput[] = [
     {
-      role: "system",
-      content: customSystemPrompt || getPrompt(promptType)
+      type: "message",
+      content: "Perform OCR on this image and return HTML as described in the system prompt."
     },
     {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "Perform OCR on this image and return HTML as described in the system prompt."
-        },
-        {
-          type: "image_url",
-          image_url: {
-            url: imageDataUrl
-          }
-        }
-      ]
+      type: "image",
+      data_url: imageDataUrl
     }
   ];
 
@@ -71,9 +83,9 @@ export async function requestOcrHtml({
     },
     body: JSON.stringify({
       model,
-      messages,
-      stream: false
-    })
+      input,
+      system_prompt: customSystemPrompt || getPrompt(promptType)
+    } as LmStudioChatRequest)
   });
 
   if (!resp.ok) {
@@ -83,12 +95,50 @@ export async function requestOcrHtml({
     );
   }
 
-  const data = (await resp.json()) as ChatCompletionResponse;
-  const content =
-    data.choices && data.choices[0] && data.choices[0].message
-      ? data.choices[0].message.content
-      : "";
+  const data = (await resp.json()) as LmStudioChatResponse;
+  const content = data.output?.[0]?.content ?? "";
 
   return parseOcrResponse(content);
+}
+
+export type LmStudioModelInfo = {
+  key: string;
+  hasVision: boolean;
+};
+
+export async function listLmStudioModels(
+  baseUrl: string,
+  apiKey?: string,
+  visionOnly: boolean = false
+): Promise<LmStudioModelInfo[]> {
+  const trimmedBase = baseUrl.replace(/\/+$/, "");
+  const endpoint = `${trimmedBase}/api/v1/models`;
+
+  const resp = await fetch(endpoint, {
+    method: "GET",
+    headers: {
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {})
+    }
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(
+      `LM Studio models request failed with status ${resp.status}: ${text}`
+    );
+  }
+
+  const data = (await resp.json()) as LmStudioModelsResponse;
+
+  const models = (data.data ?? []).map(model => ({
+    key: model.key,
+    hasVision: model.capabilities?.vision ?? false
+  }));
+
+  if (visionOnly) {
+    return models.filter(m => m.hasVision);
+  }
+
+  return models;
 }
 

@@ -1,9 +1,19 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
-import { PromptProfile, PROMPT_PROFILES } from "../ocr/prompts";
+import { 
+    PromptProfile, 
+    PROMPT_PROFILES, 
+    getAllProfiles, 
+    addCustomProfile, 
+    deleteCustomProfile, 
+    ProfileInfo 
+} from "../ocr/prompts";
+import { listLmStudioModels } from "../lmStudioClient";
+import { listOllamaModels } from "../ollamaClient";
+import { testGeminiConnection } from "../geminiClient";
 
 export type OcrProvider = "lmstudio" | "google" | "ollama";
 
@@ -36,14 +46,16 @@ interface SettingsDialogProps {
     setOllamaModel: (val: string) => void;
 
     // Prompt Profile
-    promptProfile: PromptProfile;
-    setPromptProfile: (val: PromptProfile) => void;
+    promptProfile: PromptProfile | string;
+    setPromptProfile: (val: PromptProfile | string) => void;
 
     // Shared
     systemPrompt: string;
     setSystemPrompt: (val: string) => void;
     defaultSystemPrompt: string;
 }
+
+type TestResult = { status: "idle" | "loading" | "success" | "error"; message: string };
 
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     isOpen,
@@ -70,7 +82,99 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setSystemPrompt,
     defaultSystemPrompt,
 }) => {
+    const [profiles, setProfiles] = useState<ProfileInfo[]>([]);
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [newProfileName, setNewProfileName] = useState("");
+    
+    const [lmTest, setLmTest] = useState<TestResult>({ status: "idle", message: "" });
+    const [googleTest, setGoogleTest] = useState<TestResult>({ status: "idle", message: "" });
+    const [ollamaTest, setOllamaTest] = useState<TestResult>({ status: "idle", message: "" });
+
+    useEffect(() => {
+        if (isOpen) {
+            setProfiles(getAllProfiles());
+        }
+    }, [isOpen]);
+
     if (!isOpen) return null;
+
+    const handleSaveProfile = () => {
+        if (!newProfileName.trim()) return;
+        addCustomProfile(newProfileName.trim(), systemPrompt);
+        setProfiles(getAllProfiles());
+        setNewProfileName("");
+        setShowSaveModal(false);
+    };
+
+    const handleDeleteProfile = (id: string) => {
+        deleteCustomProfile(id);
+        setProfiles(getAllProfiles());
+        if (promptProfile === id) {
+            setPromptProfile("chandra_html");
+        }
+    };
+
+    const testLmStudio = async () => {
+        setLmTest({ status: "loading", message: "Testing..." });
+        try {
+            await listLmStudioModels(baseUrl, lmApiKey || undefined);
+            setLmTest({ status: "success", message: "Connected successfully" });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : "Connection failed";
+            setLmTest({ status: "error", message: msg });
+        }
+    };
+
+    const testGoogle = async () => {
+        setGoogleTest({ status: "loading", message: "Testing..." });
+        const result = await testGeminiConnection(googleApiKey);
+        setGoogleTest({ 
+            status: result.success ? "success" : "error", 
+            message: result.message 
+        });
+    };
+
+    const testOllama = async () => {
+        setOllamaTest({ status: "loading", message: "Testing..." });
+        try {
+            const models = await listOllamaModels(ollamaBaseUrl);
+            setOllamaTest({ 
+                status: "success", 
+                message: `Connected (${models.length} models available)` 
+            });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : "Connection failed";
+            setOllamaTest({ status: "error", message: msg });
+        }
+    };
+
+    const currentProfile = profiles.find(p => p.id === promptProfile);
+
+    const renderTestButton = (testState: TestResult, onTest: () => void) => {
+        const colorClass = {
+            idle: "text-muted-foreground",
+            loading: "text-yellow-500",
+            success: "text-green-500",
+            error: "text-red-500"
+        }[testState.status];
+
+        return (
+            <div className="flex items-center gap-2">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onTest}
+                    disabled={testState.status === "loading"}
+                    className="h-7 text-xs"
+                >
+                    {testState.status === "loading" ? "Testing..." : "Test Connection"}
+                </Button>
+                {testState.message && (
+                    <span className={`text-xs ${colorClass}`}>{testState.message}</span>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -158,6 +262,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                     placeholder="lm-studio"
                                 />
                             </div>
+
+                            {renderTestButton(lmTest, testLmStudio)}
                         </div>
                     )}
 
@@ -188,6 +294,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                     placeholder="gemini-3-flash"
                                 />
                             </div>
+
+                            {renderTestButton(googleTest, testGoogle)}
                         </div>
                     )}
 
@@ -217,6 +325,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                     placeholder="glm-ocr"
                                 />
                             </div>
+
+                            {renderTestButton(ollamaTest, testOllama)}
                         </div>
                     )}
 
@@ -225,34 +335,71 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     {/* Prompt Profile Selection */}
                     <div className="space-y-2">
                         <Label>Prompt Profile</Label>
-                        <select
-                            value={promptProfile}
-                            onChange={(e) => setPromptProfile(e.target.value as PromptProfile)}
-                            className="w-full px-3 py-2 border rounded-md bg-background text-sm"
-                        >
-                            {Object.entries(PROMPT_PROFILES).map(([key, profile]) => (
-                                <option key={key} value={key}>
-                                    {profile.name}
-                                </option>
-                            ))}
-                        </select>
-                        <p className="text-xs text-muted-foreground">
-                            {PROMPT_PROFILES[promptProfile].description}
-                        </p>
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={promptProfile}
+                                onChange={(e) => setPromptProfile(e.target.value)}
+                                className="flex-1 px-3 py-2 border rounded-md bg-background text-sm"
+                            >
+                                <optgroup label="Built-in Profiles">
+                                    {profiles.filter(p => !p.isCustom).map(profile => (
+                                        <option key={profile.id} value={profile.id}>
+                                            {profile.name}
+                                        </option>
+                                    ))}
+                                </optgroup>
+                                {profiles.some(p => p.isCustom) && (
+                                    <optgroup label="Custom Profiles">
+                                        {profiles.filter(p => p.isCustom).map(profile => (
+                                            <option key={profile.id} value={profile.id}>
+                                                {profile.name}
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                )}
+                            </select>
+                            {currentProfile?.isCustom && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteProfile(promptProfile as string)}
+                                    className="text-red-500 hover:text-red-600 h-9"
+                                    title="Delete this custom profile"
+                                >
+                                    🗑️
+                                </Button>
+                            )}
+                        </div>
+                        {currentProfile && (
+                            <p className="text-xs text-muted-foreground">
+                                {currentProfile.description}
+                                {currentProfile.isCustom && <span className="ml-2 text-blue-500">(Custom)</span>}
+                            </p>
+                        )}
                     </div>
 
                     {/* Shared System Prompt */}
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
                             <Label htmlFor="systemPrompt">System Prompt (OCR Layout)</Label>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 text-xs"
-                                onClick={() => setSystemPrompt(defaultSystemPrompt)}
-                            >
-                                Reset Default
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 text-xs"
+                                    onClick={() => setSystemPrompt(defaultSystemPrompt)}
+                                >
+                                    Reset Default
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 text-xs"
+                                    onClick={() => setShowSaveModal(true)}
+                                >
+                                    Save as New Profile
+                                </Button>
+                            </div>
                         </div>
                         <Textarea
                             id="systemPrompt"
@@ -267,6 +414,30 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     <Button onClick={onClose}>Done</Button>
                 </div>
             </div>
+
+            {/* Save Profile Modal */}
+            {showSaveModal && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30">
+                    <div className="bg-background border rounded-lg shadow-lg p-6 w-[320px]">
+                        <h3 className="text-sm font-semibold mb-4">Save as New Profile</h3>
+                        <Input
+                            placeholder="Profile name..."
+                            value={newProfileName}
+                            onChange={(e) => setNewProfileName(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleSaveProfile()}
+                            autoFocus
+                        />
+                        <div className="flex justify-end gap-2 mt-4">
+                            <Button variant="ghost" size="sm" onClick={() => setShowSaveModal(false)}>
+                                Cancel
+                            </Button>
+                            <Button size="sm" onClick={handleSaveProfile} disabled={!newProfileName.trim()}>
+                                Save
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

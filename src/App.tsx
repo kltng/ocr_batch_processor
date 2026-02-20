@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { requestOcrHtml } from "./lmStudioClient";
 import { requestGeminiOcr } from "./geminiClient";
 import { requestOllamaOcr } from "./ollamaClient";
-import { getPromptByProfile, PromptProfile, PROMPT_PROFILES } from "./ocr/prompts";
+import { getPromptByProfile, getProfilePrompt, PromptProfile, PROMPT_PROFILES } from "./ocr/prompts";
 import { htmlToMarkdown } from "./ocr/htmlToMarkdown";
 import { renderBboxesFromHtml } from "./ocr/renderBboxes";
 import { fileToHash } from "./lib/hash";
@@ -47,7 +47,7 @@ export const App: React.FC = () => {
   const [ollamaModel, setOllamaModel] = useState("glm-ocr");
 
   // Prompt Profile
-  const [promptProfile, setPromptProfile] = useState<PromptProfile>("glm_ocr_layout");
+  const [promptProfile, setPromptProfile] = useState<string>("glm_ocr_layout");
 
   // Shared
   const [systemPrompt, setSystemPrompt] = useState(getPromptByProfile("glm_ocr_layout"));
@@ -66,7 +66,7 @@ export const App: React.FC = () => {
 
   // Sync systemPrompt with promptProfile
   useEffect(() => {
-    setSystemPrompt(getPromptByProfile(promptProfile));
+    setSystemPrompt(getProfilePrompt(promptProfile));
   }, [promptProfile]);
 
   // --- Process State ---
@@ -384,7 +384,7 @@ export const App: React.FC = () => {
 
         systemPrompt={systemPrompt}
         setSystemPrompt={setSystemPrompt}
-        defaultSystemPrompt={PROMPT_PROFILES[promptProfile].prompt}
+        defaultSystemPrompt={getProfilePrompt(promptProfile)}
       />
 
       <InstructionsPage

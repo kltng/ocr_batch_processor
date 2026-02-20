@@ -82,3 +82,29 @@ export async function requestGeminiOcr({
 
     return parseOcrResponse(text);
 }
+
+export async function testGeminiConnection(apiKey: string): Promise<{ success: boolean; message: string }> {
+    if (!apiKey) {
+        return { success: false, message: "API key is required" };
+    }
+
+    try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+        const resp = await fetch(url, { method: "GET" });
+
+        if (!resp.ok) {
+            const errorText = await resp.text().catch(() => "");
+            if (resp.status === 400 || resp.status === 401 || resp.status === 403) {
+                return { success: false, message: `Invalid API key (${resp.status})` };
+            }
+            return { success: false, message: `Connection failed (${resp.status}): ${errorText}` };
+        }
+
+        const data = await resp.json();
+        const modelCount = data.models?.length ?? 0;
+        return { success: true, message: `Connected successfully (${modelCount} models available)` };
+    } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        return { success: false, message: `Connection error: ${message}` };
+    }
+}

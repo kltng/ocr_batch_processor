@@ -181,6 +181,18 @@ Output ONLY the JSON array, no additional text.
 
 export type PromptProfile = "chandra_html_layout" | "chandra_html" | "glm_ocr_markdown" | "glm_ocr_layout";
 
+export type CustomPromptProfile = {
+  id: string; // unique ID (e.g., "custom_" + timestamp)
+  name: string;
+  description: string;
+  prompt: string;
+  isCustom: true;
+};
+
+export type AnyPromptProfile = PromptProfile | string; // built-in key or custom ID
+
+export const CUSTOM_PROFILES_STORAGE_KEY = "ocr_custom_profiles";
+
 export const PROMPT_PROFILES: Record<PromptProfile, { name: string; description: string; prompt: string }> = {
   chandra_html_layout: {
     name: "Chandra-OCR (HTML + Layout)",
@@ -203,6 +215,95 @@ export const PROMPT_PROFILES: Record<PromptProfile, { name: string; description:
     prompt: GLM_OCR_LAYOUT_PROMPT
   }
 };
+
+// === Custom Profile localStorage functions ===
+
+export function loadCustomProfiles(): CustomPromptProfile[] {
+  try {
+    const stored = localStorage.getItem(CUSTOM_PROFILES_STORAGE_KEY);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomProfiles(profiles: CustomPromptProfile[]): void {
+  localStorage.setItem(CUSTOM_PROFILES_STORAGE_KEY, JSON.stringify(profiles));
+}
+
+export function addCustomProfile(name: string, prompt: string): CustomPromptProfile {
+  const profiles = loadCustomProfiles();
+  const newProfile: CustomPromptProfile = {
+    id: `custom_${Date.now()}`,
+    name,
+    description: `Custom profile: ${name.substring(0, 50)}${name.length > 50 ? "..." : ""}`,
+    prompt,
+    isCustom: true
+  };
+  profiles.push(newProfile);
+  saveCustomProfiles(profiles);
+  return newProfile;
+}
+
+export function deleteCustomProfile(id: string): void {
+  const profiles = loadCustomProfiles();
+  const filtered = profiles.filter(p => p.id !== id);
+  saveCustomProfiles(filtered);
+}
+
+export function getCustomProfileById(id: string): CustomPromptProfile | undefined {
+  const profiles = loadCustomProfiles();
+  return profiles.find(p => p.id === id);
+}
+
+// === Combined profile helpers ===
+
+export type ProfileInfo = {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  isCustom: boolean;
+};
+
+export function getAllProfiles(): ProfileInfo[] {
+  const builtIn: ProfileInfo[] = Object.entries(PROMPT_PROFILES).map(([key, profile]) => ({
+    id: key,
+    name: profile.name,
+    description: profile.description,
+    prompt: profile.prompt,
+    isCustom: false
+  }));
+  
+  const custom: ProfileInfo[] = loadCustomProfiles().map(p => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    prompt: p.prompt,
+    isCustom: true
+  }));
+  
+  return [...builtIn, ...custom];
+}
+
+export function getProfilePrompt(profileId: string): string {
+  if (profileId in PROMPT_PROFILES) {
+    return PROMPT_PROFILES[profileId as PromptProfile].prompt;
+  }
+  const custom = getCustomProfileById(profileId);
+  return custom?.prompt ?? OCR_PROMPT;
+}
+
+export function getProfileInfo(profileId: string): ProfileInfo | undefined {
+  if (profileId in PROMPT_PROFILES) {
+    const p = PROMPT_PROFILES[profileId as PromptProfile];
+    return { id: profileId, name: p.name, description: p.description, prompt: p.prompt, isCustom: false };
+  }
+  const custom = getCustomProfileById(profileId);
+  return custom ? { ...custom } : undefined;
+}
 
 export type PromptType = "ocr_layout" | "ocr";
 

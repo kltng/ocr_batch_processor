@@ -14,8 +14,8 @@ export type OcrRequest = {
   customSystemPrompt?: string;
 };
 
-type LmStudioInputMessage = {
-  type: "message";
+type LmStudioInputText = {
+  type: "text";
   content: string;
 };
 
@@ -24,7 +24,7 @@ type LmStudioInputImage = {
   data_url: string;
 };
 
-type LmStudioInput = LmStudioInputMessage | LmStudioInputImage;
+type LmStudioInput = LmStudioInputText | LmStudioInputImage;
 
 type LmStudioChatRequest = {
   model: string;
@@ -66,7 +66,7 @@ export async function requestOcrHtml({
 
   const input: LmStudioInput[] = [
     {
-      type: "message",
+      type: "text",
       content: "Perform OCR on this image and return HTML as described in the system prompt."
     },
     {

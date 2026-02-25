@@ -55,11 +55,7 @@ export async function exportAllToDirectory(
   ) => {
     const handle = await directory.getFileHandle(filename, { create: true });
     const writable = await handle.createWritable();
-    if (typeof content === "string") {
-      await writable.write(content);
-    } else {
-      await writable.write(content);
-    }
+    await writable.write(content);
     await writable.close();
   };
 

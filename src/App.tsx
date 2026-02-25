@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { requestOcrHtml } from "./lmStudioClient";
 import { requestGeminiOcr } from "./geminiClient";
 import { requestOllamaOcr } from "./ollamaClient";
@@ -64,6 +64,9 @@ export const App: React.FC = () => {
 
   const [ocrResult, setOcrResult] = useState<OcrStoredResult | null>(null);
 
+  // Track the latest selection to prevent race conditions in async loading
+  const selectionIdRef = useRef(0);
+
   // Sync systemPrompt with promptProfile
   useEffect(() => {
     setSystemPrompt(getProfilePrompt(promptProfile));
@@ -77,12 +80,13 @@ export const App: React.FC = () => {
 
   // --- Handlers ---
   const refreshFileList = useCallback(async (handle: FileSystemDirectoryHandle) => {
+    const supportedExtensions = /\.(jpe?g|png|gif|bmp|webp|tiff?|pdf)$/i;
     const files: File[] = [];
     // @ts-ignore
     for await (const entry of (handle as any).values()) {
       if (entry.kind === "file") {
         const file = await entry.getFile();
-        if (!file.name.startsWith(".")) {
+        if (!file.name.startsWith(".") && supportedExtensions.test(file.name)) {
           files.push(file);
         }
       }
@@ -115,6 +119,9 @@ export const App: React.FC = () => {
   const handleSelectionChange = useCallback(async (files: File[]) => {
     setSelectedFiles(files);
 
+    // Increment selection ID to invalidate any in-flight async loads
+    const currentSelectionId = ++selectionIdRef.current;
+
     // If we selected a single new file (or multiple), default view to the last one
     const newActive = files.length > 0 ? files[files.length - 1] : null;
 
@@ -126,7 +133,8 @@ export const App: React.FC = () => {
       setStatus("Idle");
       if (workDirHandle) {
         const existing = await loadOcrResultFromFs(workDirHandle, newActive.name);
-        if (existing) {
+        // Only apply result if this is still the latest selection
+        if (existing && selectionIdRef.current === currentSelectionId) {
           setOcrResult(existing);
           setStatus("Loaded existing result");
         }
@@ -233,7 +241,7 @@ export const App: React.FC = () => {
           }
         }
 
-        setStatus(`Processing ${file.name} (${processedCount + 1}/${selectedFiles.length - skippedCount})...`);
+        setStatus(`Processing ${file.name} (${i + 1}/${selectedFiles.length})...`);
 
         const result = await processOneOcr(file);
         await saveOcrResultToFs(workDirHandle, file.name, result);

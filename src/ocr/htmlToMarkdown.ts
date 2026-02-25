@@ -14,7 +14,7 @@ export function htmlToMarkdown(
       const labeledDivs = doc.querySelectorAll<HTMLElement>("div[data-label]");
       labeledDivs.forEach((div) => {
         const label = (div.getAttribute("data-label") ?? "").toLowerCase();
-        if (label === "page-header" || label === "page-footer") {
+        if (label === "page-header" || label === "page-footer" || label === "header" || label === "footer") {
           div.remove();
         }
       });

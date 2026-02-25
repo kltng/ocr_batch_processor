@@ -30,7 +30,7 @@ export async function renderBboxesFromHtml(
     const doc = parser.parseFromString(htmlContent, "text/html");
 
     const blocks = Array.from(
-      doc.querySelectorAll<HTMLElement>("div[data-bbox]")
+      doc.querySelectorAll<HTMLElement>("[data-bbox]")
     );
 
     ctx.lineWidth = 2;
@@ -60,17 +60,21 @@ export async function renderBboxesFromHtml(
         continue;
       }
 
-      let [x0Norm, y0Norm, x1Norm, y1Norm] = coords;
+      const [x0Norm, y0Norm, x1Norm, y1Norm] = coords;
 
-      const x0 = Math.max(0, Math.min((x0Norm / 1024) * img.width, img.width));
+      // Detect normalization scale: Chandra-OCR uses 0-1024, GLM-OCR uses 0-1000
+      const maxCoord = Math.max(x0Norm, y0Norm, x1Norm, y1Norm);
+      const scale = maxCoord > 1000 ? 1024 : 1000;
+
+      const x0 = Math.max(0, Math.min((x0Norm / scale) * img.width, img.width));
       const y0 = Math.max(
         0,
-        Math.min((y0Norm / 1024) * img.height, img.height)
+        Math.min((y0Norm / scale) * img.height, img.height)
       );
-      const x1 = Math.max(0, Math.min((x1Norm / 1024) * img.width, img.width));
+      const x1 = Math.max(0, Math.min((x1Norm / scale) * img.width, img.width));
       const y1 = Math.max(
         0,
-        Math.min((y1Norm / 1024) * img.height, img.height)
+        Math.min((y1Norm / scale) * img.height, img.height)
       );
 
       const labelLower = labelAttr.toLowerCase();

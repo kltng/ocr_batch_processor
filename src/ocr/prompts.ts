@@ -31,7 +31,7 @@ export const ALLOWED_TAGS = [
   "small",
   "caption",
   "strong",
-  "ad",
+  "aside",
   "big",
   "code"
 ] as const;
@@ -113,6 +113,7 @@ export const GLM_OCR_LABELS = [
   "algorithm",
   "aside_text",
   "chart",
+  "code",
   "content",
   "display_formula",
   "doc_title",
@@ -128,6 +129,7 @@ export const GLM_OCR_LABELS = [
   "reference",
   "reference_content",
   "seal",
+  "section_header",
   "table",
   "text",
   "vertical_text",

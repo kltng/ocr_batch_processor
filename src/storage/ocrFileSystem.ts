@@ -4,6 +4,24 @@ import { OcrStoredResult } from "./ocrStore";
 const OCR_OUTPUT_DIR = "ocr_outputs";
 
 /**
+ * Quick existence check — does an .ocr.json file exist for this source file?
+ * Does not parse JSON; just checks if the file handle exists.
+ */
+export async function checkOcrExists(
+    workDir: FileSystemDirectoryHandle,
+    originalFileName: string
+): Promise<boolean> {
+    try {
+        const ocrDir = await workDir.getDirectoryHandle(OCR_OUTPUT_DIR);
+        const baseName = originalFileName.replace(/\.[^/.]+$/, "");
+        await ocrDir.getFileHandle(`${baseName}.ocr.json`);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Saves the OCR result as a JSON file in the ocr_outputs subdirectory.
  */
 export async function saveOcrResultToFs(

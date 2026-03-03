@@ -23,9 +23,76 @@ export async function writeFile(
   await writable.close();
 }
 
+import { FileTreeNode } from "../types/fileTree";
+
+const SUPPORTED_EXTENSIONS = /\.(jpe?g|png|gif|bmp|webp|tiff?|pdf)$/i;
+const HIDDEN_DIRS = new Set(["ocr_outputs", "output", ".git", "node_modules"]);
+
 /**
- * Types for File System Access API if not globally available.
- * (In modern browsers these are usually globally available, but explicit types help TS)
+ * Recursively scan a directory and build a FileTreeNode tree.
+ * Directories listed in HIDDEN_DIRS are excluded.
+ * Files are checked for OCR status via a lightweight existence check.
  */
-// These interfaces are often part of the environment, but strict TS might need them if "dom" lib is not enough or specific versions.
-// We rely on the global types provided by "dom" lib in tsconfig or @types/wicg-file-system-access
+export async function scanDirectoryRecursive(
+  dirHandle: FileSystemDirectoryHandle,
+  rootHandle: FileSystemDirectoryHandle,
+  prefix = ""
+): Promise<FileTreeNode[]> {
+  const dirs: FileTreeNode[] = [];
+  const files: FileTreeNode[] = [];
+
+  // Get ocr_outputs handle once at this level for status checks
+  let ocrDirHandle: FileSystemDirectoryHandle | null = null;
+  try {
+    ocrDirHandle = await rootHandle.getDirectoryHandle("ocr_outputs");
+  } catch {
+    // no ocr_outputs dir yet
+  }
+
+  // @ts-ignore - values() iterator
+  for await (const entry of (dirHandle as any).values()) {
+    if (entry.kind === "directory") {
+      if (HIDDEN_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+      const childPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const children = await scanDirectoryRecursive(entry, rootHandle, childPath);
+      dirs.push({
+        id: childPath,
+        name: entry.name,
+        kind: "directory",
+        dirHandle: entry,
+        children,
+        ocrStatus: "none",
+      });
+    } else if (entry.kind === "file") {
+      const file: File = await entry.getFile();
+      if (file.name.startsWith(".") || !SUPPORTED_EXTENSIONS.test(file.name)) continue;
+
+      const filePath = prefix ? `${prefix}/${file.name}` : file.name;
+
+      // Check OCR status via lightweight existence check
+      let ocrStatus: FileTreeNode["ocrStatus"] = "none";
+      if (ocrDirHandle) {
+        const baseName = file.name.replace(/\.[^/.]+$/, "");
+        try {
+          await ocrDirHandle.getFileHandle(`${baseName}.ocr.json`);
+          ocrStatus = "done";
+        } catch {
+          // not found
+        }
+      }
+
+      files.push({
+        id: filePath,
+        name: file.name,
+        kind: "file",
+        file,
+        ocrStatus,
+      });
+    }
+  }
+
+  // Sort: directories first, then alphabetically
+  dirs.sort((a, b) => a.name.localeCompare(b.name));
+  files.sort((a, b) => a.name.localeCompare(b.name));
+  return [...dirs, ...files];
+}

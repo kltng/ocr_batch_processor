@@ -1,13 +1,17 @@
 import React from "react";
 import { Button } from "./ui/button";
 import { SplitOrder } from "../lib/pdfTools";
+import { BatchProgress } from "../hooks/useBatchProcessor";
+import { BatchProgressBar } from "./BatchProgressBar";
+import { ScanLine, Scissors, FileImage, Settings, HelpCircle } from "lucide-react";
 
 interface ActionToolbarProps {
     isProcessing: boolean;
-    statusMessage: string;
+    progress: BatchProgress;
     onRunOcr: () => void;
     onSplitPages: () => void;
     onConvertPdf: () => void;
+    onCancelBatch: () => void;
     selectedCount: number;
     onOpenSettings: () => void;
     skipExisting: boolean;
@@ -19,10 +23,11 @@ interface ActionToolbarProps {
 
 export const ActionToolbar: React.FC<ActionToolbarProps> = ({
     isProcessing,
-    statusMessage,
+    progress,
     onRunOcr,
     onSplitPages,
     onConvertPdf,
+    onCancelBatch,
     selectedCount,
     onOpenSettings,
     skipExisting,
@@ -40,9 +45,11 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
                     onClick={onRunOcr}
                     disabled={isProcessing || !hasSelection}
                     size="sm"
-                    className="gap-2"
+                    className="gap-1.5"
+                    title="Run OCR (Ctrl+Enter)"
                 >
-                    {isProcessing ? "Processing..." : `Run OCR${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
+                    <ScanLine className="w-3.5 h-3.5" />
+                    {isProcessing ? "Processing..." : `OCR${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
                 </Button>
 
                 <div className="h-6 w-px bg-border mx-1" />
@@ -52,8 +59,11 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
                     size="sm"
                     onClick={onSplitPages}
                     disabled={isProcessing || !hasSelection}
+                    className="gap-1.5"
+                    title="Split double pages into halves"
                 >
-                    {`Split Pages${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
+                    <Scissors className="w-3.5 h-3.5" />
+                    Split{selectedCount > 1 ? ` (${selectedCount})` : ""}
                 </Button>
 
                 <select
@@ -62,8 +72,8 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
                     className="h-8 px-2 rounded border border-input bg-background text-xs cursor-pointer"
                     title="Page reading order: Left-to-Right or Right-to-Left"
                 >
-                    <option value="LR">L→R</option>
-                    <option value="RL">R→L</option>
+                    <option value="LR">L-R</option>
+                    <option value="RL">R-L</option>
                 </select>
 
                 <Button
@@ -71,11 +81,14 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
                     size="sm"
                     onClick={onConvertPdf}
                     disabled={isProcessing || !hasSelection}
+                    className="gap-1.5"
+                    title="Convert PDF pages to JPEG images"
                 >
-                    {`PDF to Images${selectedCount > 1 ? ` (${selectedCount})` : ""}`}
+                    <FileImage className="w-3.5 h-3.5" />
+                    PDF to Img{selectedCount > 1 ? ` (${selectedCount})` : ""}
                 </Button>
 
-                <div className="ml-4 flex items-center gap-2">
+                <div className="ml-2 flex items-center gap-2">
                     <input
                         id="skipToggle"
                         type="checkbox"
@@ -89,20 +102,20 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
                 </div>
             </div>
 
-            <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    {isProcessing && <span className="animate-spin mr-1">⏳</span>}
-                    <span>{statusMessage}</span>
-                </div>
+            <div className="flex items-center gap-3 min-w-0 flex-1 justify-end">
+                {(progress.isRunning || progress.total > 0) && (
+                    <div className="max-w-xs flex-1 min-w-0">
+                        <BatchProgressBar progress={progress} onCancel={onCancelBatch} />
+                    </div>
+                )}
 
-                <Button variant="ghost" size="sm" onClick={onOpenSettings}>
-                    Settings
+                <Button variant="ghost" size="sm" onClick={onOpenSettings} className="gap-1.5 flex-shrink-0" title="Settings">
+                    <Settings className="w-3.5 h-3.5" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={onOpenHelp}>
-                    Help
+                <Button variant="ghost" size="sm" onClick={onOpenHelp} className="gap-1.5 flex-shrink-0" title="Help">
+                    <HelpCircle className="w-3.5 h-3.5" />
                 </Button>
             </div>
         </div>
     );
 };
-

@@ -1,13 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { requestOcrHtml } from "./lmStudioClient";
 import { requestGeminiOcr } from "./geminiClient";
 import { requestOllamaOcr } from "./ollamaClient";
-import { getPromptByProfile, getProfilePrompt, PromptProfile, PROMPT_PROFILES } from "./ocr/prompts";
+import { getPromptByProfile, getProfilePrompt } from "./ocr/prompts";
 import { htmlToMarkdown } from "./ocr/htmlToMarkdown";
 import { renderBboxesFromHtml } from "./ocr/renderBboxes";
 import { fileToHash } from "./lib/hash";
 import { OcrStoredResult } from "./storage/ocrStore";
-import { loadOcrResultFromFs, saveOcrResultToFs } from "./storage/ocrFileSystem";
+import { loadOcrResultFromFs } from "./storage/ocrFileSystem";
 import { convertPdfToJpegs, splitPdfPages, splitImage, SplitOrder } from "./lib/pdfTools";
 
 import { WorkspaceLayout } from "./components/layout/WorkspaceLayout";
@@ -17,11 +17,27 @@ import { ActionToolbar } from "./components/ActionToolbar";
 import { SettingsDialog, OcrProvider } from "./components/SettingsDialog";
 import { InstructionsPage } from "./components/InstructionsPage";
 
+import { useFileTree, flattenFileIds } from "./hooks/useFileTree";
+import { useResizablePanel } from "./hooks/useResizablePanel";
+import { useBatchProcessor } from "./hooks/useBatchProcessor";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { FileTreeNode } from "./types/fileTree";
+
 function checkIsDeployedWithLocalProvider(): boolean {
   if (typeof window === "undefined") return false;
   const isHttps = window.location.protocol === "https:";
   const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
   return isHttps && !isLocalhost;
+}
+
+/** Flatten all file nodes from a tree in display order */
+function flattenFileNodes(nodes: FileTreeNode[]): FileTreeNode[] {
+  const result: FileTreeNode[] = [];
+  for (const node of nodes) {
+    if (node.kind === "file") result.push(node);
+    if (node.children) result.push(...flattenFileNodes(node.children));
+  }
+  return result;
 }
 
 export const App: React.FC = () => {
@@ -30,6 +46,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     setShowHttpsWarning(checkIsDeployedWithLocalProvider());
   }, []);
+
   // --- Config State ---
   const [provider, setProvider] = useState<OcrProvider>("ollama");
 
@@ -56,15 +73,13 @@ export const App: React.FC = () => {
 
   // --- Workspace State ---
   const [workDirHandle, setWorkDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
-  const [fileList, setFileList] = useState<File[]>([]);
 
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  // Derived active file for viewing (last selected)
-  const activeFile = selectedFiles.length > 0 ? selectedFiles[selectedFiles.length - 1] : null;
+  // Selection is now a Set of node IDs (relative paths)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [ocrResult, setOcrResult] = useState<OcrStoredResult | null>(null);
 
-  // Track the latest selection to prevent race conditions in async loading
+  // Track the latest selection to prevent race conditions
   const selectionIdRef = useRef(0);
 
   // Sync systemPrompt with promptProfile
@@ -73,80 +88,80 @@ export const App: React.FC = () => {
   }, [promptProfile]);
 
   // --- Process State ---
-  const [status, setStatus] = useState("Idle");
-  const [isProcessing, setIsProcessing] = useState(false);
   const [skipExisting, setSkipExisting] = useState(false);
   const [splitOrder, setSplitOrder] = useState<SplitOrder>("LR");
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // --- Handlers ---
-  const refreshFileList = useCallback(async (handle: FileSystemDirectoryHandle) => {
-    const supportedExtensions = /\.(jpe?g|png|gif|bmp|webp|tiff?|pdf)$/i;
-    const files: File[] = [];
-    // @ts-ignore
-    for await (const entry of (handle as any).values()) {
-      if (entry.kind === "file") {
-        const file = await entry.getFile();
-        if (!file.name.startsWith(".") && supportedExtensions.test(file.name)) {
-          files.push(file);
-        }
+  // --- Hooks ---
+  const fileTree = useFileTree(workDirHandle);
+  const { width: sidebarWidth, onMouseDown: onResizeMouseDown } = useResizablePanel();
+
+  // All file nodes in display order (for navigation)
+  const allFileNodes = useMemo(() => flattenFileNodes(fileTree.tree), [fileTree.tree]);
+
+  // Build a lookup map from id → FileTreeNode
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, FileTreeNode>();
+    function walk(nodes: FileTreeNode[]) {
+      for (const n of nodes) {
+        map.set(n.id, n);
+        if (n.children) walk(n.children);
       }
     }
-    setFileList(files.sort((a, b) => a.name.localeCompare(b.name)));
-  }, []);
+    walk(fileTree.tree);
+    return map;
+  }, [fileTree.tree]);
 
-  const handleOpenFolder = useCallback(async () => {
-    try {
-      const handle = await (window as any).showDirectoryPicker();
+  // Derived active node (last selected file)
+  const activeNodeId = useMemo(() => {
+    if (selectedIds.size === 0) return null;
+    // Return the last ID in the set (insertion order)
+    let last: string | null = null;
+    selectedIds.forEach((id) => { last = id; });
+    return last;
+  }, [selectedIds]);
 
-      // Request readwrite permission during user activation (folder selection)
-      const handleWithPermission = handle as FileSystemDirectoryHandle & {
-        requestPermission: (opts: { mode: string }) => Promise<PermissionState>;
-      };
-      const permission = await handleWithPermission.requestPermission({ mode: "readwrite" });
-      if (permission !== "granted") {
-        setStatus("Write permission denied - OCR results cannot be saved");
-        return;
-      }
+  const activeNode = activeNodeId ? nodeMap.get(activeNodeId) ?? null : null;
+  const activeFile = activeNode?.file ?? null;
 
-      setWorkDirHandle(handle);
-      await refreshFileList(handle);
-    } catch (e) {
-      console.error(e);
-    }
-  }, [refreshFileList]);
+  // Prev/next navigation
+  const activeFileIndex = activeNodeId ? allFileNodes.findIndex((n) => n.id === activeNodeId) : -1;
+  const hasPrev = activeFileIndex > 0;
+  const hasNext = activeFileIndex >= 0 && activeFileIndex < allFileNodes.length - 1;
 
-  // When selection changes, update active viewer content
-  const handleSelectionChange = useCallback(async (files: File[]) => {
-    setSelectedFiles(files);
+  const navigatePrev = useCallback(() => {
+    if (!hasPrev) return;
+    const prevNode = allFileNodes[activeFileIndex - 1];
+    setSelectedIds(new Set([prevNode.id]));
+  }, [hasPrev, allFileNodes, activeFileIndex]);
 
-    // Increment selection ID to invalidate any in-flight async loads
+  const navigateNext = useCallback(() => {
+    if (!hasNext) return;
+    const nextNode = allFileNodes[activeFileIndex + 1];
+    setSelectedIds(new Set([nextNode.id]));
+  }, [hasNext, allFileNodes, activeFileIndex]);
+
+  // --- Load OCR result when selection changes ---
+  useEffect(() => {
     const currentSelectionId = ++selectionIdRef.current;
 
-    // If we selected a single new file (or multiple), default view to the last one
-    const newActive = files.length > 0 ? files[files.length - 1] : null;
-
-    // Compare by file name instead of object identity for reliable detection
-    const isNewFile = newActive && (!activeFile || newActive.name !== activeFile.name);
-
-    if (isNewFile) {
-      setOcrResult(null); // Reset prev result
-      setStatus("Idle");
-      if (workDirHandle) {
-        const existing = await loadOcrResultFromFs(workDirHandle, newActive.name);
-        // Only apply result if this is still the latest selection
-        if (existing && selectionIdRef.current === currentSelectionId) {
-          setOcrResult(existing);
-          setStatus("Loaded existing result");
-        }
-      }
-    } else if (!newActive) {
+    if (!activeFile || !workDirHandle) {
       setOcrResult(null);
-      setStatus("Idle");
+      return;
     }
-  }, [workDirHandle, activeFile]);
 
+    setOcrResult(null);
 
-  const processOneOcr = async (file: File) => {
+    (async () => {
+      const existing = await loadOcrResultFromFs(workDirHandle, activeFile.name);
+      if (existing && selectionIdRef.current === currentSelectionId) {
+        setOcrResult(existing);
+      }
+    })();
+  }, [activeNodeId, workDirHandle]);
+
+  // --- OCR Processing ---
+  const processOneOcr = useCallback(async (file: File) => {
     const hash = await fileToHash(file);
     const imageDataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -202,127 +217,153 @@ export const App: React.FC = () => {
     };
 
     return result;
-  };
+  }, [provider, lmBaseUrl, lmModel, lmApiKey, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt]);
+
+  const handleFileProcessed = useCallback((nodeId: string, result: OcrStoredResult) => {
+    fileTree.setNodeOcrStatus(nodeId, "done");
+    // Update viewer if this is the active file
+    if (nodeId === activeNodeId) {
+      setOcrResult(result);
+    }
+  }, [activeNodeId, fileTree.setNodeOcrStatus]);
+
+  const handleBatchComplete = useCallback(() => {
+    setIsProcessing(false);
+    // Refresh tree to get updated OCR status
+    fileTree.refresh();
+  }, [fileTree.refresh]);
+
+  const { progress, runBatch, cancel: cancelBatch } = useBatchProcessor({
+    workDirHandle,
+    skipExisting,
+    provider,
+    processOneOcr,
+    onFileProcessed: handleFileProcessed,
+    onBatchComplete: handleBatchComplete,
+  });
+
+  // --- Handlers ---
+  const handleOpenFolder = useCallback(async () => {
+    try {
+      const handle = await (window as any).showDirectoryPicker();
+
+      const handleWithPermission = handle as FileSystemDirectoryHandle & {
+        requestPermission: (opts: { mode: string }) => Promise<PermissionState>;
+      };
+      const permission = await handleWithPermission.requestPermission({ mode: "readwrite" });
+      if (permission !== "granted") {
+        return;
+      }
+
+      setWorkDirHandle(handle);
+      setSelectedIds(new Set());
+      setOcrResult(null);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  // Scan directory when workspace handle changes
+  useEffect(() => {
+    if (workDirHandle) {
+      fileTree.refresh();
+    }
+  }, [workDirHandle]);
 
   const handleRunOcr = useCallback(async () => {
-    if (selectedFiles.length === 0 || !workDirHandle) return;
-    setIsProcessing(true);
-    setStatus("Starting Batch OCR...");
+    if (selectedIds.size === 0 || !workDirHandle) return;
 
-    let processedCount = 0;
-    let skippedCount = 0;
-    let errorCount = 0;
-
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-
-      try {
-        // Check Skip
-        if (skipExisting) {
-          const existing = await loadOcrResultFromFs(workDirHandle, file.name);
-          if (existing) {
-            skippedCount++;
-            // Compare by file name instead of object identity
-            if (activeFile && file.name === activeFile.name) {
-              setOcrResult(existing);
-            }
-            continue;
-          }
-        }
-
-        // Rate Limiting for Google - 5 RPM = 1 request per 12 seconds
-        // We apply delay BEFORE request, but only if it's not the very first request of the batch (or maybe always if we want to be safe considering prev batches?)
-        // Safest: always wait 12s between calls.
-        if (provider === "google" && i > 0 && processedCount > 0) {
-          // Wait 12 seconds
-          for (let s = 12; s > 0; s--) {
-            setStatus(`Rate limit: Waiting ${s}s...`);
-            await new Promise(r => setTimeout(r, 1000));
-          }
-        }
-
-        setStatus(`Processing ${file.name} (${i + 1}/${selectedFiles.length})...`);
-
-        const result = await processOneOcr(file);
-        await saveOcrResultToFs(workDirHandle, file.name, result);
-
-        // Compare by file name instead of object identity to ensure UI updates
-        if (activeFile && file.name === activeFile.name) {
-          setOcrResult(result);
-        }
-
-        processedCount++;
-      } catch (e) {
-        console.error(`Error processing ${file.name}`, e);
-        setStatus(`Error: ${e instanceof Error ? e.message : "Unknown"}`);
-        // Wait a bit on error to read it, then continue? Or just count error.
-        errorCount++;
+    // Build file list from selected IDs
+    const files: { id: string; file: File }[] = [];
+    selectedIds.forEach((id) => {
+      const node = nodeMap.get(id);
+      if (node?.file) {
+        files.push({ id: node.id, file: node.file });
+        fileTree.setNodeOcrStatus(id, "processing");
       }
-    }
+    });
 
-    setStatus(`Batch Complete. Processed: ${processedCount}, Skipped: ${skippedCount}, Errors: ${errorCount}`);
-    setIsProcessing(false);
-  }, [selectedFiles, workDirHandle, provider, lmBaseUrl, lmModel, lmApiKey, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, skipExisting, activeFile]);
+    if (files.length === 0) return;
+    setIsProcessing(true);
+    await runBatch(files);
+  }, [selectedIds, workDirHandle, nodeMap, runBatch, fileTree.setNodeOcrStatus]);
 
   const handleSplitPages = useCallback(async () => {
-    if (selectedFiles.length === 0 || !workDirHandle) return;
+    if (selectedIds.size === 0 || !workDirHandle) return;
     setIsProcessing(true);
-    setStatus("Starting Batch Split...");
 
-    for (const file of selectedFiles) {
-      setStatus(`Splitting ${file.name}...`);
+    for (const id of selectedIds) {
+      const node = nodeMap.get(id);
+      if (!node?.file) continue;
       try {
-        if (file.type === "application/pdf") {
-          await splitPdfPages(file, workDirHandle, splitOrder);
+        if (node.file.type === "application/pdf") {
+          await splitPdfPages(node.file, workDirHandle, splitOrder);
         } else {
-          await splitImage(file, workDirHandle, splitOrder);
+          await splitImage(node.file, workDirHandle, splitOrder);
         }
       } catch (e) {
         console.error(e);
       }
     }
 
-    setStatus("Batch Split Complete. Refreshing...");
-    await refreshFileList(workDirHandle);
+    await fileTree.refresh(["split_jpegs"]);
     setIsProcessing(false);
-  }, [selectedFiles, workDirHandle, refreshFileList, splitOrder]);
+  }, [selectedIds, workDirHandle, nodeMap, fileTree.refresh, splitOrder]);
 
   const handleConvertPdf = useCallback(async () => {
-    if (selectedFiles.length === 0 || !workDirHandle) return;
+    if (selectedIds.size === 0 || !workDirHandle) return;
     setIsProcessing(true);
-    setStatus("Starting PDF Conversion...");
 
-    for (const file of selectedFiles) {
-      setStatus(`Converting ${file.name}...`);
+    for (const id of selectedIds) {
+      const node = nodeMap.get(id);
+      if (!node?.file) continue;
       try {
-        await convertPdfToJpegs(file, workDirHandle);
+        await convertPdfToJpegs(node.file, workDirHandle);
       } catch (e) {
         console.error(e);
       }
     }
 
-    setStatus("Batch Conversion Complete. Refreshing...");
-    await refreshFileList(workDirHandle);
+    await fileTree.refresh(["converted_jpegs"]);
     setIsProcessing(false);
-  }, [selectedFiles, workDirHandle, refreshFileList]);
+  }, [selectedIds, workDirHandle, nodeMap, fileTree.refresh]);
 
+  // --- Keyboard Shortcuts ---
+  const shortcutActions = useMemo(() => ({
+    onSelectAll: () => {
+      const allIds = flattenFileIds(fileTree.tree);
+      setSelectedIds(new Set(allIds));
+    },
+    onDeselectAll: () => {
+      setSelectedIds(new Set());
+    },
+    onPrevFile: navigatePrev,
+    onNextFile: navigateNext,
+    onRunOcr: () => {
+      if (!isProcessing && selectedIds.size > 0) {
+        handleRunOcr();
+      }
+    },
+  }), [fileTree.tree, navigatePrev, navigateNext, isProcessing, selectedIds, handleRunOcr]);
+
+  useKeyboardShortcuts(shortcutActions);
 
   return (
     <>
       {showHttpsWarning && (
         <div className="fixed top-0 left-0 right-0 z-[100] bg-amber-500 text-amber-950 px-4 py-3 text-sm font-medium flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span>⚠️</span>
+            <span>Warning:</span>
             <span>
-              <strong>Local OCR unavailable:</strong> You're viewing the deployed app via HTTPS. 
-              Local providers (LM Studio, Ollama) require running locally. 
+              <strong>Local OCR unavailable:</strong> You're viewing the deployed app via HTTPS.
+              Local providers (LM Studio, Ollama) require running locally.
               <a href="https://github.com/kltng/ocr_batch_processor#local-development" target="_blank" rel="noreferrer" className="underline ml-1">
                 Run locally
               </a> or use Google Gemini.
             </span>
           </div>
-          <button 
-            onClick={() => setShowHttpsWarning(false)} 
+          <button
+            onClick={() => setShowHttpsWarning(false)}
             className="ml-4 px-2 py-1 hover:bg-amber-600 rounded text-xs"
           >
             Dismiss
@@ -330,11 +371,19 @@ export const App: React.FC = () => {
         </div>
       )}
       <WorkspaceLayout
+        sidebarWidth={sidebarWidth}
+        onResizeMouseDown={onResizeMouseDown}
         sidebar={
           <FileSidebar
-            files={fileList}
-            selectedFiles={selectedFiles}
-            onSelectionChange={handleSelectionChange}
+            tree={fileTree.filteredTree}
+            expandedDirs={fileTree.expandedDirs}
+            onToggleDir={fileTree.toggleDir}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+            searchQuery={fileTree.searchQuery}
+            onSearchChange={fileTree.setSearchQuery}
+            onCollapseAll={fileTree.collapseAll}
+            totalFileCount={fileTree.totalFileCount}
             onOpenFolder={handleOpenFolder}
             hasFolder={!!workDirHandle}
           />
@@ -342,11 +391,12 @@ export const App: React.FC = () => {
         toolbar={
           <ActionToolbar
             isProcessing={isProcessing}
-            statusMessage={status}
+            progress={progress}
             onRunOcr={handleRunOcr}
             onSplitPages={handleSplitPages}
             onConvertPdf={handleConvertPdf}
-            selectedCount={selectedFiles.length}
+            onCancelBatch={cancelBatch}
+            selectedCount={selectedIds.size}
             onOpenSettings={() => setShowSettings(true)}
             skipExisting={skipExisting}
             setSkipExisting={setSkipExisting}
@@ -359,6 +409,10 @@ export const App: React.FC = () => {
           <DocumentViewer
             file={activeFile}
             ocrResult={ocrResult}
+            onPrev={navigatePrev}
+            onNext={navigateNext}
+            hasPrev={hasPrev}
+            hasNext={hasNext}
           />
         }
       />

@@ -1,101 +1,156 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
+import { FileTree } from "./FileTree";
+import { FileToolbar } from "./FileToolbar";
+import { FileTreeNode } from "../types/fileTree";
+import { FolderOpen } from "lucide-react";
 
 interface FileSidebarProps {
-    files: File[];
-    selectedFiles: File[];
-    onSelectionChange: (files: File[]) => void;
+    tree: FileTreeNode[];
+    expandedDirs: Set<string>;
+    onToggleDir: (id: string) => void;
+    selectedIds: Set<string>;
+    onSelectionChange: (ids: Set<string>) => void;
+    searchQuery: string;
+    onSearchChange: (query: string) => void;
+    onCollapseAll: () => void;
+    totalFileCount: number;
     className?: string;
     onOpenFolder?: () => void;
     hasFolder: boolean;
 }
 
+/** Flatten all file node IDs from tree */
+function flattenFileIds(nodes: FileTreeNode[]): string[] {
+    const ids: string[] = [];
+    for (const node of nodes) {
+        if (node.kind === "file") ids.push(node.id);
+        if (node.children) ids.push(...flattenFileIds(node.children));
+    }
+    return ids;
+}
+
+/** Flatten file nodes in tree order for range selection */
+function flattenFileNodes(nodes: FileTreeNode[]): FileTreeNode[] {
+    const result: FileTreeNode[] = [];
+    for (const node of nodes) {
+        if (node.kind === "file") result.push(node);
+        if (node.children) result.push(...flattenFileNodes(node.children));
+    }
+    return result;
+}
+
 export const FileSidebar: React.FC<FileSidebarProps> = ({
-    files,
-    selectedFiles,
+    tree,
+    expandedDirs,
+    onToggleDir,
+    selectedIds,
     onSelectionChange,
+    searchQuery,
+    onSearchChange,
+    onCollapseAll,
+    totalFileCount,
     className,
     onOpenFolder,
     hasFolder,
 }) => {
-    const sortedFiles = useMemo(() => {
-        return [...files].sort((a, b) => a.name.localeCompare(b.name));
-    }, [files]);
+    const lastClickedRef = useRef<string | null>(null);
 
-    const handleFileClick = (file: File, e: React.MouseEvent) => {
-        if (e.metaKey || e.ctrlKey) {
-            // Toggle
-            if (selectedFiles.find(f => f.name === file.name)) {
-                onSelectionChange(selectedFiles.filter(f => f.name !== file.name));
-            } else {
-                onSelectionChange([...selectedFiles, file]);
-            }
-        } else if (e.shiftKey && selectedFiles.length > 0) {
-            // Range select (simplified: just add from last selected to this one)
-            // For proper range, we need index.
-            const lastSelected = selectedFiles[selectedFiles.length - 1];
-            const startIdx = sortedFiles.findIndex(f => f.name === lastSelected.name);
-            const endIdx = sortedFiles.findIndex(f => f.name === file.name);
+    const allFileNodes = useMemo(() => flattenFileNodes(tree), [tree]);
 
-            const low = Math.min(startIdx, endIdx);
-            const high = Math.max(startIdx, endIdx);
-
-            const range = sortedFiles.slice(low, high + 1);
-            // Merge unique
-            const newSelection = [...selectedFiles];
-            range.forEach(f => {
-                if (!newSelection.find(sel => sel.name === f.name)) {
-                    newSelection.push(f);
+    const handleFileClick = useCallback(
+        (node: FileTreeNode, e: React.MouseEvent) => {
+            if (e.metaKey || e.ctrlKey) {
+                // Toggle individual
+                const next = new Set(selectedIds);
+                if (next.has(node.id)) next.delete(node.id);
+                else next.add(node.id);
+                onSelectionChange(next);
+                lastClickedRef.current = node.id;
+            } else if (e.shiftKey && lastClickedRef.current) {
+                // Range select
+                const startIdx = allFileNodes.findIndex((n) => n.id === lastClickedRef.current);
+                const endIdx = allFileNodes.findIndex((n) => n.id === node.id);
+                if (startIdx >= 0 && endIdx >= 0) {
+                    const low = Math.min(startIdx, endIdx);
+                    const high = Math.max(startIdx, endIdx);
+                    const next = new Set(selectedIds);
+                    for (let i = low; i <= high; i++) {
+                        next.add(allFileNodes[i].id);
+                    }
+                    onSelectionChange(next);
                 }
-            });
-            onSelectionChange(newSelection);
-        } else {
-            // Single select
-            onSelectionChange([file]);
-        }
-    };
+            } else {
+                // Single select
+                onSelectionChange(new Set([node.id]));
+                lastClickedRef.current = node.id;
+            }
+        },
+        [selectedIds, onSelectionChange, allFileNodes]
+    );
+
+    const handleSelectAll = useCallback(() => {
+        const allIds = flattenFileIds(tree);
+        onSelectionChange(new Set(allIds));
+    }, [tree, onSelectionChange]);
+
+    const handleDeselectAll = useCallback(() => {
+        onSelectionChange(new Set());
+    }, [onSelectionChange]);
 
     return (
         <div className={cn("flex flex-col h-full border-r bg-muted/10", className)}>
-            <div className="p-4 border-b">
-                <h2 className="text-sm font-semibold mb-2">Files</h2>
+            <div className="p-3 border-b">
+                <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-sm font-semibold">Files</h2>
+                </div>
                 {!hasFolder && (
-                    <Button onClick={onOpenFolder} size="sm" variant="default" className="w-full">
+                    <Button onClick={onOpenFolder} size="sm" variant="default" className="w-full gap-1.5">
+                        <FolderOpen className="w-3.5 h-3.5" />
                         Open Folder
                     </Button>
                 )}
                 {hasFolder && (
-                    <Button onClick={onOpenFolder} size="sm" variant="outline" className="w-full text-xs h-7">
+                    <Button onClick={onOpenFolder} size="sm" variant="outline" className="w-full text-xs h-7 gap-1.5">
+                        <FolderOpen className="w-3 h-3" />
                         Change Folder
                     </Button>
                 )}
             </div>
-            <div className="flex-1 overflow-auto p-2 space-y-1">
-                {files.length === 0 && hasFolder && (
+
+            {hasFolder && (
+                <FileToolbar
+                    searchQuery={searchQuery}
+                    onSearchChange={onSearchChange}
+                    onSelectAll={handleSelectAll}
+                    onDeselectAll={handleDeselectAll}
+                    onCollapseAll={onCollapseAll}
+                    hasSelection={selectedIds.size > 0}
+                />
+            )}
+
+            <div className="flex-1 overflow-auto p-1">
+                {tree.length === 0 && hasFolder && (
                     <p className="text-xs text-muted-foreground p-2 text-center">
                         No supported files found.
                     </p>
                 )}
-                {sortedFiles.map((file) => {
-                    const isSelected = !!selectedFiles.find(f => f.name === file.name);
-                    return (
-                        <button
-                            key={file.name}
-                            onClick={(e) => handleFileClick(file, e)}
-                            className={cn(
-                                "w-full text-left px-3 py-2 rounded-md text-xs truncate transition-colors select-none",
-                                isSelected
-                                    ? "bg-primary text-primary-foreground font-medium"
-                                    : "hover:bg-accent text-foreground hover:text-accent-foreground"
-                            )}
-                            title={file.name}
-                        >
-                            {file.name}
-                        </button>
-                    );
-                })}
+                <FileTree
+                    nodes={tree}
+                    expandedDirs={expandedDirs}
+                    selectedIds={selectedIds}
+                    onToggleDir={onToggleDir}
+                    onFileClick={handleFileClick}
+                />
             </div>
+
+            {hasFolder && totalFileCount > 0 && (
+                <div className="h-7 border-t flex items-center justify-between px-3 text-[0.65rem] text-muted-foreground">
+                    <span>{totalFileCount} files</span>
+                    {selectedIds.size > 0 && <span>{selectedIds.size} selected</span>}
+                </div>
+            )}
         </div>
     );
 };

@@ -8,7 +8,7 @@ import { renderBboxesFromHtml } from "./ocr/renderBboxes";
 import { fileToHash } from "./lib/hash";
 import { OcrStoredResult } from "./storage/ocrStore";
 import { loadOcrResultFromFs } from "./storage/ocrFileSystem";
-import { convertPdfToJpegs, splitPdfPages, splitImage, SplitOrder } from "./lib/pdfTools";
+import { convertPdfToJpegs, splitPdfPages, splitImage, SplitOrder, SplitMode } from "./lib/pdfTools";
 
 import { WorkspaceLayout } from "./components/layout/WorkspaceLayout";
 import { FileSidebar } from "./components/FileSidebar";
@@ -90,6 +90,7 @@ export const App: React.FC = () => {
   // --- Process State ---
   const [skipExisting, setSkipExisting] = useState(false);
   const [splitOrder, setSplitOrder] = useState<SplitOrder>("LR");
+  const [splitMode, setSplitMode] = useState<SplitMode>("auto");
   const [isProcessing, setIsProcessing] = useState(false);
 
   // --- Hooks ---
@@ -297,9 +298,9 @@ export const App: React.FC = () => {
       if (!node?.file) continue;
       try {
         if (node.file.type === "application/pdf") {
-          await splitPdfPages(node.file, workDirHandle, splitOrder);
+          await splitPdfPages(node.file, workDirHandle, splitOrder, splitMode);
         } else {
-          await splitImage(node.file, workDirHandle, splitOrder);
+          await splitImage(node.file, workDirHandle, splitOrder, splitMode);
         }
       } catch (e) {
         console.error(e);
@@ -308,7 +309,7 @@ export const App: React.FC = () => {
 
     await fileTree.refresh(["split_jpegs"]);
     setIsProcessing(false);
-  }, [selectedIds, workDirHandle, nodeMap, fileTree.refresh, splitOrder]);
+  }, [selectedIds, workDirHandle, nodeMap, fileTree.refresh, splitOrder, splitMode]);
 
   const handleConvertPdf = useCallback(async () => {
     if (selectedIds.size === 0 || !workDirHandle) return;
@@ -403,6 +404,8 @@ export const App: React.FC = () => {
             onOpenHelp={() => setShowInstructions(true)}
             splitOrder={splitOrder}
             setSplitOrder={setSplitOrder}
+            splitMode={splitMode}
+            setSplitMode={setSplitMode}
           />
         }
         content={

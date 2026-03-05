@@ -1,5 +1,6 @@
 import * as pdfjsLib from "pdfjs-dist";
 import { writeFile, getOrCreateSubdirectory } from "../storage/filesystem";
+import { findSplitLine } from "./smartSplit";
 
 // Configure worker. In a Vite app, we can usually point to the file in node_modules or a CDN.
 // For simplicity and compatibility, we'll try to set it to a CDN or local public path if we copy it.
@@ -50,11 +51,13 @@ export async function convertPdfToJpegs(
 }
 
 export type SplitOrder = "LR" | "RL";
+export type SplitMode = "auto" | "center";
 
 export async function splitPdfPages(
     file: File,
     outputDir: FileSystemDirectoryHandle,
-    splitOrder: SplitOrder = "LR"
+    splitOrder: SplitOrder = "LR",
+    splitMode: SplitMode = "auto"
 ): Promise<void> {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
@@ -82,7 +85,8 @@ export async function splitPdfPages(
             canvas,
             targetDir,
             `${file.name.replace(/\.pdf$/i, "")}_page_${pageNum}`,
-            splitOrder
+            splitOrder,
+            splitMode
         );
     }
 }
@@ -90,7 +94,8 @@ export async function splitPdfPages(
 export async function splitImage(
     file: File,
     outputDir: FileSystemDirectoryHandle,
-    splitOrder: SplitOrder = "LR"
+    splitOrder: SplitOrder = "LR",
+    splitMode: SplitMode = "auto"
 ): Promise<void> {
     const targetDir = await getOrCreateSubdirectory(outputDir, "split_jpegs");
     const bitmap = await createImageBitmap(file);
@@ -103,21 +108,20 @@ export async function splitImage(
 
     ctx.drawImage(bitmap, 0, 0);
 
-    // Use original extension or default to jpg, but request asked for jpegs output generally.
-    // We'll stick to jpg output for consistency with the folder name "split_jpegs".
     const baseName = file.name.replace(/\.[^/.]+$/, "");
-    await splitAndSaveCanvas(canvas, targetDir, baseName, splitOrder);
+    await splitAndSaveCanvas(canvas, targetDir, baseName, splitOrder, splitMode);
 }
 
 async function splitAndSaveCanvas(
     canvas: HTMLCanvasElement,
     targetDir: FileSystemDirectoryHandle,
     baseName: string,
-    splitOrder: SplitOrder = "LR"
+    splitOrder: SplitOrder = "LR",
+    splitMode: SplitMode = "auto"
 ): Promise<void> {
     const width = canvas.width;
     const height = canvas.height;
-    const mid = Math.floor(width / 2);
+    const mid = splitMode === "auto" ? findSplitLine(canvas) : Math.floor(width / 2);
 
     // Determine which suffix goes to which side based on splitOrder
     // LR: Left is first (A), Right is second (B)

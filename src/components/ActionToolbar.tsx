@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "./ui/button";
-import { SplitOrder } from "../lib/pdfTools";
+import { SplitOrder, SplitMode } from "../lib/pdfTools";
 import { BatchProgress } from "../hooks/useBatchProcessor";
 import { BatchProgressBar } from "./BatchProgressBar";
 import { ScanLine, Scissors, FileImage, Settings, HelpCircle } from "lucide-react";
@@ -19,6 +19,8 @@ interface ActionToolbarProps {
     onOpenHelp: () => void;
     splitOrder: SplitOrder;
     setSplitOrder: (val: SplitOrder) => void;
+    splitMode: SplitMode;
+    setSplitMode: (val: SplitMode) => void;
 }
 
 export const ActionToolbar: React.FC<ActionToolbarProps> = ({
@@ -35,6 +37,8 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
     onOpenHelp,
     splitOrder,
     setSplitOrder,
+    splitMode,
+    setSplitMode,
 }) => {
     const hasSelection = selectedCount > 0;
 
@@ -65,6 +69,16 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
                     <Scissors className="w-3.5 h-3.5" />
                     Split{selectedCount > 1 ? ` (${selectedCount})` : ""}
                 </Button>
+
+                <select
+                    value={splitMode}
+                    onChange={(e) => setSplitMode(e.target.value as SplitMode)}
+                    className="h-8 px-2 rounded border border-input bg-background text-xs cursor-pointer"
+                    title="Split detection: Auto finds the gutter, Center splits at the midpoint"
+                >
+                    <option value="auto">Auto</option>
+                    <option value="center">Center</option>
+                </select>
 
                 <select
                     value={splitOrder}

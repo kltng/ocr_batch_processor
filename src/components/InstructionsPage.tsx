@@ -130,6 +130,46 @@ export const InstructionsPage: React.FC<InstructionsPageProps> = ({ isOpen, onCl
                         </div>
                     </section>
 
+                    {/* Section: Prompt Profiles */}
+                    <section className="space-y-4">
+                        <h3 className="text-xl font-bold">Prompt Profiles & Bounding Boxes</h3>
+                        <div className="bg-muted/50 p-6 rounded-lg border space-y-4 text-sm md:text-base">
+                            <p className="text-muted-foreground leading-relaxed">
+                                In <strong>Settings</strong>, you can choose a <strong>Prompt Profile</strong> that controls how the model formats its output.
+                                Different models support different capabilities:
+                            </p>
+                            <div className="space-y-3">
+                                <div className="border rounded-md p-3">
+                                    <p className="font-semibold">Chandra-OCR (HTML + Layout)</p>
+                                    <p className="text-muted-foreground text-sm mt-1">
+                                        Outputs HTML with bounding boxes. The <strong>Annotated</strong> view will show colored bounding boxes overlaid on the image.
+                                        Best for <code>Chandra-OCR</code> and <code>Qwen-VL</code> models.
+                                    </p>
+                                </div>
+                                <div className="border rounded-md p-3">
+                                    <p className="font-semibold">Chandra-OCR (HTML)</p>
+                                    <p className="text-muted-foreground text-sm mt-1">
+                                        HTML output without bounding boxes. Works with most vision-language models.
+                                    </p>
+                                </div>
+                                <div className="border rounded-md p-3">
+                                    <p className="font-semibold">GLM-OCR (Markdown)</p>
+                                    <p className="text-muted-foreground text-sm mt-1">
+                                        Markdown output optimized for <code>GLM-OCR</code> via Ollama. Excels at tables, formulas, and document structure.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="rounded-md bg-amber-50 dark:bg-amber-950 p-3 text-xs">
+                                <strong className="text-amber-700 dark:text-amber-300">Bounding box support:</strong>
+                                <p className="text-amber-600 dark:text-amber-400 mt-1">
+                                    Only <strong>Chandra-OCR (HTML + Layout)</strong> supports bounding boxes in the Annotated view.
+                                    GLM-OCR was fine-tuned for text recognition only — bounding boxes in the official GLM-OCR pipeline
+                                    come from a separate layout detection model, not the VLM itself.
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+
                     {/* Section: General Usage */}
                     <section className="space-y-4">
                         <h3 className="text-xl font-bold">How to Use</h3>

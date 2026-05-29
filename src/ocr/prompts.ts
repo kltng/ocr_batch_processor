@@ -154,17 +154,37 @@ export const NUEXTRACT_TEMPLATE = `{
   "main_text": "verbatim-string"
 }`;
 
+// Template for modern academic books (running header + page number at top, body
+// text, then a rule and numbered footnotes at the bottom). "header" is the
+// chapter/running title; footnotes keep their marker (①②③ / 1,2,3) alongside
+// the citation text. Verified on 孔廟祭祀研究 and 國尚師位 scans.
+export const NUEXTRACT_FOOTNOTE_TEMPLATE = `{
+  "header": "verbatim-string",
+  "page_number": "verbatim-string",
+  "main_text": "verbatim-string",
+  "footnotes": [
+    {
+      "marker": "verbatim-string",
+      "text": "verbatim-string"
+    }
+  ]
+}`;
+
 export type PromptProfile =
   | "chandra_html_layout"
   | "chandra_html"
   | "glm_ocr_markdown"
   | "numarkdown_thinking"
   | "dots_ocr_layout"
-  | "nuextract_template";
+  | "nuextract_template"
+  | "nuextract_footnotes";
 
 // Profiles whose "prompt" is actually a NuExtract JSON template, routed through
 // the structured-extraction pipeline instead of OCR-to-HTML.
-export const EXTRACTION_PROFILES = new Set<string>(["nuextract_template"]);
+export const EXTRACTION_PROFILES = new Set<string>([
+  "nuextract_template",
+  "nuextract_footnotes"
+]);
 
 export function isExtractionProfile(profileId: string): boolean {
   return EXTRACTION_PROFILES.has(profileId);
@@ -212,6 +232,11 @@ export const PROMPT_PROFILES: Record<PromptProfile, { name: string; description:
     name: "NuExtract 3 (Template Extraction)",
     description: "Structured extraction, not transcription. Edit the JSON template below to define the fields to pull from each page; NuExtract returns matching JSON. Use 'verbatim-string' for exact copies.",
     prompt: NUEXTRACT_TEMPLATE
+  },
+  nuextract_footnotes: {
+    name: "NuExtract 3 (Modern Book + Footnotes)",
+    description: "Extraction for modern academic books: running header, page number, main text, and numbered footnotes (each with its marker). Edit the template below to adjust fields.",
+    prompt: NUEXTRACT_FOOTNOTE_TEMPLATE
   }
 };
 

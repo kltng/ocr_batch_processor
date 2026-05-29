@@ -55,6 +55,8 @@ export const App: React.FC = () => {
   const [lmBaseUrl, setLmBaseUrl] = useState("http://localhost:1234");
   const [lmModel, setLmModel] = useState("numarkdown-8b-thinking-mlxs");
   const [lmApiKey, setLmApiKey] = useState("lm-studio");
+  // Markdown model used to re-OCR pages where NuExtract drops template mode.
+  const [nuExtractFallbackModel, setNuExtractFallbackModel] = useState("numarkdown-8b-thinking-mlxs");
 
   // Google Config
   const [googleApiKey, setGoogleApiKey] = useState("");
@@ -172,26 +174,50 @@ export const App: React.FC = () => {
       reader.readAsDataURL(file);
     });
 
-    // Structured-extraction path (NuExtract): run the template, store JSON,
-    // and skip the OCR-to-HTML/markdown/bbox pipeline entirely.
+    // Structured-extraction path (NuExtract): run the template, store JSON.
+    // On chapter-opening pages (decorative icons / large titles), NuExtract
+    // abandons template mode and returns plain OCR — a hardwired model quirk
+    // no template avoids. In that case, re-OCR the page with the fallback model
+    // (NuMarkdown) and store clean markdown so no page is left broken.
     if (isExtractionProfile(promptProfile)) {
       if (provider !== "lmstudio") {
         throw new Error("Template extraction (NuExtract) requires the LM Studio provider.");
       }
-      const extraction = await requestNuExtract({
+      const extracted = await requestNuExtract({
         config: { baseUrl: lmBaseUrl, model: lmModel, apiKey: lmApiKey },
         template: systemPrompt,
         imageDataUrl
       });
+
+      if (extracted.structured) {
+        return {
+          key: hash,
+          imageName: file.name,
+          model: lmModel,
+          createdAt: Date.now(),
+          html: "",
+          markdownWithHeaders: "",
+          markdownNoHeaders: "",
+          extraction: extracted.content
+        };
+      }
+
+      // Fallback pass: re-OCR with the markdown model and store as markdown.
+      const fbHtml = await requestOcrHtml({
+        config: { baseUrl: lmBaseUrl, model: nuExtractFallbackModel, apiKey: lmApiKey },
+        promptType: "ocr",
+        imageDataUrl,
+        customSystemPrompt: getProfilePrompt("numarkdown_thinking")
+      });
+      const fbMd = htmlToMarkdown(fbHtml, true);
       return {
         key: hash,
         imageName: file.name,
-        model: lmModel,
+        model: `${lmModel} → ${nuExtractFallbackModel} (fallback)`,
         createdAt: Date.now(),
-        html: "",
-        markdownWithHeaders: "",
-        markdownNoHeaders: "",
-        extraction
+        html: fbHtml,
+        markdownWithHeaders: fbMd,
+        markdownNoHeaders: fbMd
       };
     }
 
@@ -242,7 +268,7 @@ export const App: React.FC = () => {
     };
 
     return result;
-  }, [provider, lmBaseUrl, lmModel, lmApiKey, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, promptProfile]);
+  }, [provider, lmBaseUrl, lmModel, lmApiKey, nuExtractFallbackModel, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, promptProfile]);
 
   const handleFileProcessed = useCallback((nodeId: string, result: OcrStoredResult) => {
     fileTree.setNodeOcrStatus(nodeId, "done");
@@ -457,6 +483,8 @@ export const App: React.FC = () => {
         setLmModel={setLmModel}
         lmApiKey={lmApiKey}
         setLmApiKey={setLmApiKey}
+        nuExtractFallbackModel={nuExtractFallbackModel}
+        setNuExtractFallbackModel={setNuExtractFallbackModel}
 
         googleApiKey={googleApiKey}
         setGoogleApiKey={setGoogleApiKey}

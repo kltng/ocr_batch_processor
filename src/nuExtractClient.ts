@@ -15,6 +15,16 @@ export type NuExtractRequest = {
   imageDataUrl: string;
 };
 
+export type NuExtractResult = {
+  // True when the model returned structured JSON matching the template.
+  // False when it fell back to plain OCR (happens on chapter-opening pages
+  // with decorative icons / large titles — a hardwired model behavior that
+  // no template change avoids; callers should re-OCR these pages).
+  structured: boolean;
+  // Pretty-printed JSON when structured; raw model text when not.
+  content: string;
+};
+
 type LmStudioInput =
   | { type: "text"; content: string }
   | { type: "image"; data_url: string };
@@ -31,7 +41,7 @@ export async function requestNuExtract({
   config,
   template,
   imageDataUrl
-}: NuExtractRequest): Promise<string> {
+}: NuExtractRequest): Promise<NuExtractResult> {
   const { baseUrl, model, apiKey } = config;
   const trimmedBase = baseUrl.replace(/\/+$/, "");
   const endpoint = `${trimmedBase}/api/v1/chat`;
@@ -87,8 +97,8 @@ export async function requestNuExtract({
   // re-serialize for stable, pretty output. Fall back to raw on parse failure.
   const unfenced = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   try {
-    return JSON.stringify(JSON.parse(unfenced), null, 2);
+    return { structured: true, content: JSON.stringify(JSON.parse(unfenced), null, 2) };
   } catch {
-    return raw;
+    return { structured: false, content: raw };
   }
 }

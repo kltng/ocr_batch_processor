@@ -33,6 +33,8 @@ interface SettingsDialogProps {
     setLmModel: (val: string) => void;
     lmApiKey: string;
     setLmApiKey: (val: string) => void;
+    nuExtractFallbackModel: string;
+    setNuExtractFallbackModel: (val: string) => void;
 
     // Google Config
     googleApiKey: string;
@@ -69,6 +71,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setLmModel,
     lmApiKey,
     setLmApiKey,
+    nuExtractFallbackModel,
+    setNuExtractFallbackModel,
     googleApiKey,
     setGoogleApiKey,
     googleModel,
@@ -379,6 +383,22 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                             </p>
                         )}
                     </div>
+
+                    {/* NuExtract fallback model (extraction profiles only) */}
+                    {isExtraction && (
+                        <div className="space-y-2">
+                            <Label htmlFor="fallbackModel">Fallback OCR Model</Label>
+                            <Input
+                                id="fallbackModel"
+                                value={nuExtractFallbackModel}
+                                onChange={(e) => setNuExtractFallbackModel(e.target.value)}
+                                placeholder="numarkdown-8b-thinking-mlxs"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Pages where NuExtract drops template mode (chapter openers with icons/titles) are re-OCR'd with this model and saved as Markdown.
+                            </p>
+                        </div>
+                    )}
 
                     {/* Shared System Prompt */}
                     <div className="space-y-2">

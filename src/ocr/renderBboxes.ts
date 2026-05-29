@@ -40,6 +40,7 @@ export async function renderBboxesFromHtml(
     for (const div of blocks) {
       const bboxAttr = div.getAttribute("data-bbox");
       const labelAttr = div.getAttribute("data-label") ?? "";
+      const bboxScale = div.getAttribute("data-bbox-scale") ?? "";
 
       if (!bboxAttr) {
         continue;
@@ -62,19 +63,22 @@ export async function renderBboxesFromHtml(
 
       const [x0Norm, y0Norm, x1Norm, y1Norm] = coords;
 
-      // Detect normalization scale: Chandra-OCR uses 0-1024, GLM-OCR uses 0-1000
+      // dots.ocr emits raw pixel coordinates (flagged via data-bbox-scale="pixel").
+      // Chandra-OCR uses 0-1024 normalized, GLM-OCR uses 0-1000 — auto-detected.
+      const isPixelScale = bboxScale === "pixel";
       const maxCoord = Math.max(x0Norm, y0Norm, x1Norm, y1Norm);
-      const scale = maxCoord > 1000 ? 1024 : 1000;
+      const scaleX = isPixelScale ? img.width : maxCoord > 1000 ? 1024 : 1000;
+      const scaleY = isPixelScale ? img.height : maxCoord > 1000 ? 1024 : 1000;
 
-      const x0 = Math.max(0, Math.min((x0Norm / scale) * img.width, img.width));
+      const x0 = Math.max(0, Math.min((x0Norm / scaleX) * img.width, img.width));
       const y0 = Math.max(
         0,
-        Math.min((y0Norm / scale) * img.height, img.height)
+        Math.min((y0Norm / scaleY) * img.height, img.height)
       );
-      const x1 = Math.max(0, Math.min((x1Norm / scale) * img.width, img.width));
+      const x1 = Math.max(0, Math.min((x1Norm / scaleX) * img.width, img.width));
       const y1 = Math.max(
         0,
-        Math.min((y1Norm / scale) * img.height, img.height)
+        Math.min((y1Norm / scaleY) * img.height, img.height)
       );
 
       const labelLower = labelAttr.toLowerCase();

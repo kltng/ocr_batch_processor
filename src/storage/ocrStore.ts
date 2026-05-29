@@ -7,6 +7,8 @@ export type OcrStoredResult = {
   markdownWithHeaders: string;
   markdownNoHeaders: string;
   annotatedImageDataUrl?: string;
+  // Structured-extraction output (NuExtract): pretty-printed JSON string.
+  extraction?: string;
 };
 
 const DB_NAME = "lmstudio-ocr";
@@ -101,7 +103,8 @@ export async function saveOcrResult(
       html: data.html,
       markdownWithHeaders: data.markdownWithHeaders,
       markdownNoHeaders: data.markdownNoHeaders,
-      annotatedImageDataUrl: data.annotatedImageDataUrl
+      annotatedImageDataUrl: data.annotatedImageDataUrl,
+      extraction: data.extraction
     };
 
     const request = store.put(record);

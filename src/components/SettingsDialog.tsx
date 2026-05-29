@@ -3,13 +3,14 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
-import { 
-    PromptProfile, 
-    PROMPT_PROFILES, 
-    getAllProfiles, 
-    addCustomProfile, 
-    deleteCustomProfile, 
-    ProfileInfo 
+import {
+    PromptProfile,
+    PROMPT_PROFILES,
+    getAllProfiles,
+    addCustomProfile,
+    deleteCustomProfile,
+    isExtractionProfile,
+    ProfileInfo
 } from "../ocr/prompts";
 import { listLmStudioModels } from "../lmStudioClient";
 import { listOllamaModels } from "../ollamaClient";
@@ -149,6 +150,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     };
 
     const currentProfile = profiles.find(p => p.id === promptProfile);
+    const isExtraction = isExtractionProfile(String(promptProfile));
 
     const renderTestButton = (testState: TestResult, onTest: () => void) => {
         const colorClass = {
@@ -381,7 +383,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                     {/* Shared System Prompt */}
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <Label htmlFor="systemPrompt">System Prompt (OCR Layout)</Label>
+                            <Label htmlFor="systemPrompt">{isExtraction ? "Extraction Template (JSON)" : "System Prompt (OCR Layout)"}</Label>
                             <div className="flex items-center gap-2">
                                 <Button
                                     variant="outline"

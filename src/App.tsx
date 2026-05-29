@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { requestOcrHtml } from "./lmStudioClient";
 import { requestGeminiOcr } from "./geminiClient";
 import { requestOllamaOcr } from "./ollamaClient";
-import { getPromptByProfile, getProfilePrompt } from "./ocr/prompts";
+import { requestNuExtract } from "./nuExtractClient";
+import { getPromptByProfile, getProfilePrompt, isExtractionProfile } from "./ocr/prompts";
 import { htmlToMarkdown } from "./ocr/htmlToMarkdown";
 import { renderBboxesFromHtml } from "./ocr/renderBboxes";
 import { fileToHash } from "./lib/hash";
@@ -48,11 +49,11 @@ export const App: React.FC = () => {
   }, []);
 
   // --- Config State ---
-  const [provider, setProvider] = useState<OcrProvider>("ollama");
+  const [provider, setProvider] = useState<OcrProvider>("lmstudio");
 
   // LM Studio Config
   const [lmBaseUrl, setLmBaseUrl] = useState("http://localhost:1234");
-  const [lmModel, setLmModel] = useState("chandra-ocr");
+  const [lmModel, setLmModel] = useState("numarkdown-8b-thinking-mlxs");
   const [lmApiKey, setLmApiKey] = useState("lm-studio");
 
   // Google Config
@@ -64,10 +65,10 @@ export const App: React.FC = () => {
   const [ollamaModel, setOllamaModel] = useState("glm-ocr");
 
   // Prompt Profile
-  const [promptProfile, setPromptProfile] = useState<string>("glm_ocr_markdown");
+  const [promptProfile, setPromptProfile] = useState<string>("numarkdown_thinking");
 
   // Shared
-  const [systemPrompt, setSystemPrompt] = useState(getPromptByProfile("glm_ocr_markdown"));
+  const [systemPrompt, setSystemPrompt] = useState(getPromptByProfile("numarkdown_thinking"));
   const [showSettings, setShowSettings] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
 
@@ -171,6 +172,29 @@ export const App: React.FC = () => {
       reader.readAsDataURL(file);
     });
 
+    // Structured-extraction path (NuExtract): run the template, store JSON,
+    // and skip the OCR-to-HTML/markdown/bbox pipeline entirely.
+    if (isExtractionProfile(promptProfile)) {
+      if (provider !== "lmstudio") {
+        throw new Error("Template extraction (NuExtract) requires the LM Studio provider.");
+      }
+      const extraction = await requestNuExtract({
+        config: { baseUrl: lmBaseUrl, model: lmModel, apiKey: lmApiKey },
+        template: systemPrompt,
+        imageDataUrl
+      });
+      return {
+        key: hash,
+        imageName: file.name,
+        model: lmModel,
+        createdAt: Date.now(),
+        html: "",
+        markdownWithHeaders: "",
+        markdownNoHeaders: "",
+        extraction
+      };
+    }
+
     let html = "";
     let usedModel = "";
 
@@ -218,7 +242,7 @@ export const App: React.FC = () => {
     };
 
     return result;
-  }, [provider, lmBaseUrl, lmModel, lmApiKey, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt]);
+  }, [provider, lmBaseUrl, lmModel, lmApiKey, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, promptProfile]);
 
   const handleFileProcessed = useCallback((nodeId: string, result: OcrStoredResult) => {
     fileTree.setNodeOcrStatus(nodeId, "done");

@@ -45,6 +45,7 @@ export async function saveOcrResultToFs(
         markdownWithHeaders: data.markdownWithHeaders,
         markdownNoHeaders: data.markdownNoHeaders,
         annotatedImageDataUrl: data.annotatedImageDataUrl,
+        extraction: data.extraction,
     };
 
     const jsonContent = JSON.stringify(record, null, 2);

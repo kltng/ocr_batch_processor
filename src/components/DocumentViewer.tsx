@@ -4,7 +4,7 @@ import { cn } from "../lib/utils";
 import { ChevronLeft, ChevronRight, Copy, Check } from "lucide-react";
 import { Button } from "./ui/button";
 
-type ViewMode = "split" | "original" | "annotated" | "text";
+type ViewMode = "split" | "original" | "annotated" | "text" | "extracted";
 
 interface DocumentViewerProps {
     file: File | null;
@@ -43,11 +43,17 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
         }
     }, [file]);
 
-    // Reset view mode when file changes
+    // Reset view mode when file changes. Extraction-only results (no annotation/
+    // markdown) default to the Extracted tab so the JSON is visible immediately.
     useEffect(() => {
-        setViewMode("split");
+        const extractionOnly =
+            !!ocrResult?.extraction &&
+            !ocrResult?.annotatedImageDataUrl &&
+            !ocrResult?.markdownNoHeaders &&
+            !ocrResult?.html;
+        setViewMode(extractionOnly ? "extracted" : "split");
         setCopied(false);
-    }, [file?.name]);
+    }, [file?.name, ocrResult]);
 
     if (!file) {
         return (
@@ -58,10 +64,11 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
     }
 
     const hasAnnotation = !!ocrResult?.annotatedImageDataUrl;
+    const hasExtraction = !!ocrResult?.extraction;
     const hasText = !!ocrResult?.markdownNoHeaders || !!ocrResult?.html;
 
     const handleCopy = async () => {
-        const text = ocrResult?.markdownNoHeaders || ocrResult?.html || "";
+        const text = ocrResult?.extraction || ocrResult?.markdownNoHeaders || ocrResult?.html || "";
         await navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -71,6 +78,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
         { key: "split", label: "Split", show: true },
         { key: "original", label: "Original", show: true },
         { key: "annotated", label: "Annotated", show: hasAnnotation },
+        { key: "extracted", label: "Extracted", show: hasExtraction },
         { key: "text", label: "Markdown", show: hasText },
     ];
 
@@ -121,7 +129,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                                 </button>
                             ))}
                     </div>
-                    {hasText && (
+                    {(hasText || hasExtraction) && (
                         <Button
                             variant="ghost"
                             size="sm"
@@ -178,6 +186,10 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                         {hasAnnotation && (
                             <img src={ocrResult!.annotatedImageDataUrl} alt="Annotated" className="max-h-full max-w-full object-contain shadow-sm" />
                         )}
+                    </div>
+                ) : viewMode === "extracted" ? (
+                    <div className="h-full w-full overflow-auto p-8 font-mono text-xs whitespace-pre-wrap bg-white">
+                        {ocrResult?.extraction || "No extraction output yet."}
                     </div>
                 ) : (
                     <div className="h-full w-full overflow-auto p-8 font-mono text-xs whitespace-pre-wrap bg-white">

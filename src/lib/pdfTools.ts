@@ -41,9 +41,11 @@ export async function convertPdfToJpegs(
         );
 
         if (blob) {
+            // Zero-pad to 4 digits (0001, 0002, …) so filenames sort correctly.
+            const pageNum = String(i).padStart(4, "0");
             await writeFile(
                 targetDir,
-                `${file.name.replace(/\.pdf$/i, "")}_page_${i}.jpg`,
+                `${file.name.replace(/\.pdf$/i, "")}_page_${pageNum}.jpg`,
                 blob
             );
         }

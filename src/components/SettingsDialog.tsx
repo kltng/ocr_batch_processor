@@ -37,6 +37,8 @@ interface SettingsDialogProps {
     setNuExtractFallbackModel: (val: string) => void;
     cleanBorders: boolean;
     setCleanBorders: (val: boolean) => void;
+    borderThreshold: number;
+    setBorderThreshold: (val: number) => void;
 
     // Google Config
     googleApiKey: string;
@@ -77,6 +79,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setNuExtractFallbackModel,
     cleanBorders,
     setCleanBorders,
+    borderThreshold,
+    setBorderThreshold,
     googleApiKey,
     setGoogleApiKey,
     googleModel,
@@ -358,6 +362,30 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 </span>
                             </span>
                         </label>
+
+                        {cleanBorders && (
+                            <div className="space-y-1 pl-6 pt-1">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="borderThreshold" className="text-xs">
+                                        Border darkness threshold
+                                    </Label>
+                                    <span className="text-xs font-mono text-muted-foreground">{borderThreshold}</span>
+                                </div>
+                                <input
+                                    id="borderThreshold"
+                                    type="range"
+                                    min={0}
+                                    max={255}
+                                    step={5}
+                                    value={borderThreshold}
+                                    onChange={(e) => setBorderThreshold(Number(e.target.value))}
+                                    className="w-full"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Pixels darker than this (luminance 0–255, from the image edges inward) are treated as border and erased. Higher = more aggressive (removes lighter gray edges, but risks eating dark text near margins). Lower = gentler (only the deepest black). Default 120 suits high-contrast B&amp;W book scans. If a black border survives, raise it; if text gets clipped, lower it.
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="h-px bg-border my-2" />

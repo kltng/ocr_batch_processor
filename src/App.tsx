@@ -60,6 +60,8 @@ export const App: React.FC = () => {
   const [nuExtractFallbackModel, setNuExtractFallbackModel] = useState("numarkdown-8b-thinking-mlxs");
   // Strip scanner-background black borders from each image before OCR.
   const [cleanBorders, setCleanBorders] = useState(false);
+  // Luminance cutoff (0-255) below which a pixel counts as border-black.
+  const [borderThreshold, setBorderThreshold] = useState(120);
 
   // Google Config
   const [googleApiKey, setGoogleApiKey] = useState("");
@@ -180,7 +182,7 @@ export const App: React.FC = () => {
     // Optionally strip scanner-background black borders before OCR. Best-effort:
     // deborderDataUrl returns the original on any failure.
     const imageDataUrl = cleanBorders
-      ? await deborderDataUrl(rawDataUrl)
+      ? await deborderDataUrl(rawDataUrl, { threshold: borderThreshold })
       : rawDataUrl;
 
     // Structured-extraction path (NuExtract): run the template, store JSON.
@@ -277,7 +279,7 @@ export const App: React.FC = () => {
     };
 
     return result;
-  }, [provider, lmBaseUrl, lmModel, lmApiKey, nuExtractFallbackModel, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, promptProfile, cleanBorders]);
+  }, [provider, lmBaseUrl, lmModel, lmApiKey, nuExtractFallbackModel, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, promptProfile, cleanBorders, borderThreshold]);
 
   const handleFileProcessed = useCallback((nodeId: string, result: OcrStoredResult) => {
     fileTree.setNodeOcrStatus(nodeId, "done");
@@ -496,6 +498,8 @@ export const App: React.FC = () => {
         setNuExtractFallbackModel={setNuExtractFallbackModel}
         cleanBorders={cleanBorders}
         setCleanBorders={setCleanBorders}
+        borderThreshold={borderThreshold}
+        setBorderThreshold={setBorderThreshold}
 
         googleApiKey={googleApiKey}
         setGoogleApiKey={setGoogleApiKey}

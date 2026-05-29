@@ -32,11 +32,14 @@ type LmStudioChatRequest = {
   system_prompt?: string;
 };
 
+type LmStudioOutputItem = {
+  // "message" is the answer; "reasoning" is a thinking model's chain-of-thought.
+  type: string;
+  content: string;
+};
+
 type LmStudioChatResponse = {
-  output: Array<{
-    type: "message";
-    content: string;
-  }>;
+  output: LmStudioOutputItem[];
 };
 
 type LmStudioModelCapabilities = {
@@ -96,7 +99,17 @@ export async function requestOcrHtml({
   }
 
   const data = (await resp.json()) as LmStudioChatResponse;
-  const content = data.output?.[0]?.content ?? "";
+  const outputs = data.output ?? [];
+
+  // Thinking models (e.g. NuMarkdown, Chandra-OCR-2) emit a "reasoning" block
+  // before the actual "message" block. Picking output[0] blindly would return
+  // the chain-of-thought instead of the OCR text. Prefer the message; fall back
+  // to the last non-reasoning item, then the last item.
+  const message =
+    outputs.find(o => o.type === "message") ??
+    [...outputs].reverse().find(o => o.type !== "reasoning") ??
+    outputs[outputs.length - 1];
+  const content = message?.content ?? "";
 
   return parseOcrResponse(content);
 }

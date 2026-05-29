@@ -35,6 +35,8 @@ interface SettingsDialogProps {
     setLmApiKey: (val: string) => void;
     nuExtractFallbackModel: string;
     setNuExtractFallbackModel: (val: string) => void;
+    cleanBorders: boolean;
+    setCleanBorders: (val: boolean) => void;
 
     // Google Config
     googleApiKey: string;
@@ -73,6 +75,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setLmApiKey,
     nuExtractFallbackModel,
     setNuExtractFallbackModel,
+    cleanBorders,
+    setCleanBorders,
     googleApiKey,
     setGoogleApiKey,
     googleModel,
@@ -335,6 +339,26 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                             {renderTestButton(ollamaTest, testOllama)}
                         </div>
                     )}
+
+                    <div className="h-px bg-border my-2" />
+
+                    {/* Image Preprocessing */}
+                    <div className="space-y-2">
+                        <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                className="mt-0.5"
+                                checked={cleanBorders}
+                                onChange={(e) => setCleanBorders(e.target.checked)}
+                            />
+                            <span className="text-sm">
+                                Clean borders before OCR
+                                <span className="block text-xs text-muted-foreground">
+                                    Removes scanner-background black borders from each image in-memory before sending it to the model. Originals are not modified.
+                                </span>
+                            </span>
+                        </label>
+                    </div>
 
                     <div className="h-px bg-border my-2" />
 

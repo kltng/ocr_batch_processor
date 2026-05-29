@@ -7,6 +7,7 @@ import { getPromptByProfile, getProfilePrompt, isExtractionProfile } from "./ocr
 import { htmlToMarkdown } from "./ocr/htmlToMarkdown";
 import { renderBboxesFromHtml } from "./ocr/renderBboxes";
 import { fileToHash } from "./lib/hash";
+import { deborderDataUrl } from "./lib/deborder";
 import { OcrStoredResult } from "./storage/ocrStore";
 import { loadOcrResultFromFs } from "./storage/ocrFileSystem";
 import { convertPdfToJpegs, splitPdfPages, splitImage, SplitOrder, SplitMode } from "./lib/pdfTools";
@@ -57,6 +58,8 @@ export const App: React.FC = () => {
   const [lmApiKey, setLmApiKey] = useState("lm-studio");
   // Markdown model used to re-OCR pages where NuExtract drops template mode.
   const [nuExtractFallbackModel, setNuExtractFallbackModel] = useState("numarkdown-8b-thinking-mlxs");
+  // Strip scanner-background black borders from each image before OCR.
+  const [cleanBorders, setCleanBorders] = useState(false);
 
   // Google Config
   const [googleApiKey, setGoogleApiKey] = useState("");
@@ -167,12 +170,18 @@ export const App: React.FC = () => {
   // --- OCR Processing ---
   const processOneOcr = useCallback(async (file: File) => {
     const hash = await fileToHash(file);
-    const imageDataUrl = await new Promise<string>((resolve, reject) => {
+    const rawDataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+
+    // Optionally strip scanner-background black borders before OCR. Best-effort:
+    // deborderDataUrl returns the original on any failure.
+    const imageDataUrl = cleanBorders
+      ? await deborderDataUrl(rawDataUrl)
+      : rawDataUrl;
 
     // Structured-extraction path (NuExtract): run the template, store JSON.
     // On chapter-opening pages (decorative icons / large titles), NuExtract
@@ -268,7 +277,7 @@ export const App: React.FC = () => {
     };
 
     return result;
-  }, [provider, lmBaseUrl, lmModel, lmApiKey, nuExtractFallbackModel, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, promptProfile]);
+  }, [provider, lmBaseUrl, lmModel, lmApiKey, nuExtractFallbackModel, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, promptProfile, cleanBorders]);
 
   const handleFileProcessed = useCallback((nodeId: string, result: OcrStoredResult) => {
     fileTree.setNodeOcrStatus(nodeId, "done");
@@ -485,6 +494,8 @@ export const App: React.FC = () => {
         setLmApiKey={setLmApiKey}
         nuExtractFallbackModel={nuExtractFallbackModel}
         setNuExtractFallbackModel={setNuExtractFallbackModel}
+        cleanBorders={cleanBorders}
+        setCleanBorders={setCleanBorders}
 
         googleApiKey={googleApiKey}
         setGoogleApiKey={setGoogleApiKey}

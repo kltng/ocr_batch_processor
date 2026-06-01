@@ -74,7 +74,7 @@ export function useBatchProcessor(options: BatchProcessorOptions) {
         try {
           // Check skip
           if (skipExisting) {
-            const existing = await loadOcrResultFromFs(workDirHandle, file.name);
+            const existing = await loadOcrResultFromFs(workDirHandle, id);
             if (existing) {
               skipped++;
               setProgress((p) => ({
@@ -107,7 +107,7 @@ export function useBatchProcessor(options: BatchProcessorOptions) {
           }));
 
           const result = await processOneOcr(file);
-          await saveOcrResultToFs(workDirHandle, file.name, result);
+          await saveOcrResultToFs(workDirHandle, id, result);
           completed++;
           processedSoFar++;
           setProgress((p) => ({ ...p, completed }));

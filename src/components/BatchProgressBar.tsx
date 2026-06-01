@@ -41,6 +41,7 @@ export const BatchProgressBar: React.FC<BatchProgressBarProps> = ({
           className="h-6 w-6 p-0 flex-shrink-0"
           onClick={onCancel}
           title="Cancel batch"
+          aria-label="Cancel batch"
         >
           <X className="w-3.5 h-3.5" />
         </Button>

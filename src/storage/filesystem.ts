@@ -28,6 +28,45 @@ import { FileTreeNode } from "../types/fileTree";
 const SUPPORTED_EXTENSIONS = /\.(jpe?g|png|gif|bmp|webp|tiff?|pdf)$/i;
 const HIDDEN_DIRS = new Set(["ocr_outputs", "output", ".git", "node_modules"]);
 
+function splitSourcePathForOcr(sourcePath: string): { dirParts: string[]; jsonFileName: string } {
+  const parts = sourcePath.split("/").filter(Boolean);
+  const filename = parts.pop() ?? sourcePath;
+  const baseName = filename.replace(/\.[^/.]+$/, "");
+  return { dirParts: parts, jsonFileName: `${baseName}.ocr.json` };
+}
+
+async function getNestedDirectoryIfExists(
+  dirHandle: FileSystemDirectoryHandle,
+  dirParts: string[]
+): Promise<FileSystemDirectoryHandle> {
+  let current = dirHandle;
+  for (const part of dirParts) {
+    current = await current.getDirectoryHandle(part);
+  }
+  return current;
+}
+
+async function hasOcrSidecar(
+  ocrDirHandle: FileSystemDirectoryHandle,
+  sourcePath: string
+): Promise<boolean> {
+  const { dirParts, jsonFileName } = splitSourcePathForOcr(sourcePath);
+  try {
+    const targetDir = await getNestedDirectoryIfExists(ocrDirHandle, dirParts);
+    await targetDir.getFileHandle(jsonFileName);
+    return true;
+  } catch {
+    if (dirParts.length > 0) return false;
+    try {
+      // Backward compatibility for older root-level flat ocr_outputs/name.ocr.json files.
+      await ocrDirHandle.getFileHandle(jsonFileName);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 /**
  * Recursively scan a directory and build a FileTreeNode tree.
  * Directories listed in HIDDEN_DIRS are excluded.
@@ -72,12 +111,8 @@ export async function scanDirectoryRecursive(
       // Check OCR status via lightweight existence check
       let ocrStatus: FileTreeNode["ocrStatus"] = "none";
       if (ocrDirHandle) {
-        const baseName = file.name.replace(/\.[^/.]+$/, "");
-        try {
-          await ocrDirHandle.getFileHandle(`${baseName}.ocr.json`);
+        if (await hasOcrSidecar(ocrDirHandle, filePath)) {
           ocrStatus = "done";
-        } catch {
-          // not found
         }
       }
 

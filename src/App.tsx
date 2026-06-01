@@ -10,7 +10,7 @@ import { fileToHash } from "./lib/hash";
 import { deborderDataUrl } from "./lib/deborder";
 import { OcrStoredResult } from "./storage/ocrStore";
 import { loadOcrResultFromFs } from "./storage/ocrFileSystem";
-import { convertPdfToJpegs, splitPdfPages, splitImage, SplitOrder, SplitMode } from "./lib/pdfTools";
+import type { SplitOrder, SplitMode } from "./lib/pdfTools";
 
 import { WorkspaceLayout } from "./components/layout/WorkspaceLayout";
 import { FileSidebar } from "./components/FileSidebar";
@@ -154,7 +154,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     const currentSelectionId = ++selectionIdRef.current;
 
-    if (!activeFile || !workDirHandle) {
+    if (!activeFile || !activeNodeId || !workDirHandle) {
       setOcrResult(null);
       return;
     }
@@ -162,7 +162,7 @@ export const App: React.FC = () => {
     setOcrResult(null);
 
     (async () => {
-      const existing = await loadOcrResultFromFs(workDirHandle, activeFile.name);
+      const existing = await loadOcrResultFromFs(workDirHandle, activeNodeId);
       if (existing && selectionIdRef.current === currentSelectionId) {
         setOcrResult(existing);
       }
@@ -265,7 +265,9 @@ export const App: React.FC = () => {
 
     const mdWith = htmlToMarkdown(html, true);
     const mdWithout = htmlToMarkdown(html, false);
-    const annotated = await renderBboxesFromHtml(file, html);
+    const annotated = file.type.startsWith("image/")
+      ? await renderBboxesFromHtml(file, html)
+      : undefined;
 
     const result: OcrStoredResult = {
       key: hash,
@@ -353,6 +355,7 @@ export const App: React.FC = () => {
   const handleSplitPages = useCallback(async () => {
     if (selectedIds.size === 0 || !workDirHandle) return;
     setIsProcessing(true);
+    const { splitPdfPages, splitImage } = await import("./lib/pdfTools");
 
     for (const id of selectedIds) {
       const node = nodeMap.get(id);
@@ -375,6 +378,7 @@ export const App: React.FC = () => {
   const handleConvertPdf = useCallback(async () => {
     if (selectedIds.size === 0 || !workDirHandle) return;
     setIsProcessing(true);
+    const { convertPdfToJpegs } = await import("./lib/pdfTools");
 
     for (const id of selectedIds) {
       const node = nodeMap.get(id);

@@ -113,6 +113,18 @@ function convertDotsLayoutToHtml(regions: DotsOcrRegion[]): string {
   return htmlParts.join("\n");
 }
 
+function getLayoutRegionsFromParsedJson(parsed: unknown): unknown[] | null {
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const obj = parsed as Record<string, unknown>;
+  for (const key of ["elements", "layout", "regions", "items", "data", "result"]) {
+    if (Array.isArray(obj[key])) return obj[key] as unknown[];
+  }
+
+  return null;
+}
+
 // Thinking models sometimes inline their chain-of-thought as <think>...</think>
 // (or <thinking>...</thinking>) instead of a separate reasoning block. Strip it
 // so the reasoning never leaks into the saved OCR text.
@@ -147,15 +159,16 @@ export function parseOcrResponse(rawContent: unknown): string {
       const parsed = JSON.parse(asString);
 
       if (typeof parsed === "object" && parsed !== null) {
-        if (Array.isArray(parsed)) {
-          const firstItem = parsed[0];
+        const layoutRegions = getLayoutRegionsFromParsedJson(parsed);
+        if (layoutRegions) {
+          const firstItem = layoutRegions[0];
           if (firstItem && typeof firstItem === "object" && "bbox" in firstItem) {
             // GLM-OCR uses label/content; dots.ocr uses category/text.
             if ("label" in firstItem) {
-              return convertGlmLayoutToHtml(parsed as GlmOcrRegion[]);
+              return convertGlmLayoutToHtml(layoutRegions as GlmOcrRegion[]);
             }
             if ("category" in firstItem) {
-              return convertDotsLayoutToHtml(parsed as DotsOcrRegion[]);
+              return convertDotsLayoutToHtml(layoutRegions as DotsOcrRegion[]);
             }
           }
         }
@@ -203,4 +216,3 @@ export function parseOcrResponse(rawContent: unknown): string {
     return "";
   }
 }
-

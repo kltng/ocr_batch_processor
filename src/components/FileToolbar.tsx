@@ -59,6 +59,7 @@ export const FileToolbar: React.FC<FileToolbarProps> = ({
           className="h-6 px-1.5 text-[0.65rem] gap-1 ml-auto"
           onClick={onCollapseAll}
           title="Collapse All"
+          aria-label="Collapse All"
         >
           <ChevronsDownUp className="w-3 h-3" />
         </Button>

@@ -96,21 +96,18 @@ export async function listOllamaModels(baseUrl: string): Promise<string[]> {
   const trimmedBase = baseUrl.replace(/\/+$/, "");
   const endpoint = `${trimmedBase}/api/tags`;
 
-  try {
-    const resp = await fetch(endpoint, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
-
-    if (!resp.ok) {
-      return [];
+  const resp = await fetch(endpoint, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json"
     }
+  });
 
-    const data = await resp.json();
-    return (data.models || []).map((m: { name: string }) => m.name);
-  } catch {
-    return [];
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Ollama models request failed with status ${resp.status}: ${text}`);
   }
+
+  const data = await resp.json();
+  return (data.models || []).map((m: { name: string }) => m.name);
 }

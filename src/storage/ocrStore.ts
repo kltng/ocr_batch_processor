@@ -1,6 +1,8 @@
 export type OcrStoredResult = {
   key: string;
   imageName: string;
+  /** Relative path of the source file from the opened workspace root. */
+  sourcePath?: string;
   model: string;
   createdAt: number;
   html: string;
@@ -100,6 +102,7 @@ export async function saveOcrResult(
       model,
       createdAt: data.createdAt ?? Date.now(),
       imageName: data.imageName,
+      sourcePath: data.sourcePath,
       html: data.html,
       markdownWithHeaders: data.markdownWithHeaders,
       markdownNoHeaders: data.markdownNoHeaders,
@@ -159,4 +162,3 @@ export async function clearAllOcrResults(): Promise<void> {
     };
   });
 }
-

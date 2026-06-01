@@ -15,6 +15,7 @@ import {
 import { listLmStudioModels } from "../lmStudioClient";
 import { listOllamaModels } from "../ollamaClient";
 import { testGeminiConnection } from "../geminiClient";
+import { Trash2 } from "lucide-react";
 
 export type OcrProvider = "lmstudio" | "google" | "ollama";
 
@@ -423,8 +424,9 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                     onClick={() => handleDeleteProfile(promptProfile as string)}
                                     className="text-red-500 hover:text-red-600 h-9"
                                     title="Delete this custom profile"
+                                    aria-label="Delete this custom profile"
                                 >
-                                    🗑️
+                                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                                 </Button>
                             )}
                         </div>

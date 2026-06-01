@@ -50,6 +50,7 @@ export const ALLOWED_ATTRIBUTES = [
   "alt",
   "align",
   "data-bbox",
+  "data-bbox-scale",
   "data-label"
 ] as const;
 
@@ -138,7 +139,7 @@ Please output the layout information from the image, including each layout eleme
     - The output text must be the original text from the image, with no translation.
     - All layout elements must be sorted according to human reading order.
 
-5. Final Output: The entire output must be a single JSON object.
+5. Final Output: The entire output must be a single JSON array.
 `.trim();
 
 // NuExtract 3 takes a JSON template (the fields to pull out), not a prose
@@ -338,4 +339,3 @@ export function getPrompt(promptType: PromptType): string {
 export function getPromptByProfile(profile: PromptProfile): string {
   return PROMPT_PROFILES[profile].prompt;
 }
-

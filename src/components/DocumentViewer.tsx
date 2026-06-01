@@ -94,6 +94,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                         onClick={onPrev}
                         disabled={!hasPrev}
                         title="Previous file"
+                        aria-label="Previous file"
                     >
                         <ChevronLeft className="w-3.5 h-3.5" />
                     </Button>
@@ -104,6 +105,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                         onClick={onNext}
                         disabled={!hasNext}
                         title="Next file"
+                        aria-label="Next file"
                     >
                         <ChevronRight className="w-3.5 h-3.5" />
                     </Button>
@@ -136,6 +138,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                             className="h-6 w-6 p-0"
                             onClick={handleCopy}
                             title="Copy text to clipboard"
+                            aria-label="Copy text to clipboard"
                         >
                             {copied ? (
                                 <Check className="w-3 h-3 text-emerald-500" />

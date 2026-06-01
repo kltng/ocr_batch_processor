@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "./ui/button";
-import { SplitOrder, SplitMode } from "../lib/pdfTools";
+import type { SplitOrder, SplitMode } from "../lib/pdfTools";
 import { BatchProgress } from "../hooks/useBatchProcessor";
 import { BatchProgressBar } from "./BatchProgressBar";
 import { ScanLine, Scissors, FileImage, Settings, HelpCircle } from "lucide-react";
@@ -123,10 +123,10 @@ export const ActionToolbar: React.FC<ActionToolbarProps> = ({
                     </div>
                 )}
 
-                <Button variant="ghost" size="sm" onClick={onOpenSettings} className="gap-1.5 flex-shrink-0" title="Settings">
+                <Button variant="ghost" size="sm" onClick={onOpenSettings} className="gap-1.5 flex-shrink-0" title="Settings" aria-label="Settings">
                     <Settings className="w-3.5 h-3.5" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={onOpenHelp} className="gap-1.5 flex-shrink-0" title="Help">
+                <Button variant="ghost" size="sm" onClick={onOpenHelp} className="gap-1.5 flex-shrink-0" title="Help" aria-label="Help">
                     <HelpCircle className="w-3.5 h-3.5" />
                 </Button>
             </div>

@@ -119,29 +119,6 @@ Render tables as Markdown tables and math as LaTeX.
 Transcribe the original text exactly — do not translate or summarize.
 `.trim();
 
-// dots.ocr emits a single JSON array of layout elements with bbox/category/text.
-// This is the model's official layout-all prompt; parseOcrResponse maps its
-// category/text fields into the same data-bbox HTML the rest of the app expects.
-export const DOTS_OCR_PROMPT = `
-Please output the layout information from the image, including each layout element's bbox, its category, and the corresponding text content within the bbox.
-
-1. Bbox format: [x1, y1, x2, y2]
-
-2. Layout Categories: The possible categories are ['Caption', 'Footnote', 'Formula', 'List-item', 'Page-footer', 'Page-header', 'Picture', 'Section-header', 'Table', 'Text', 'Title'].
-
-3. Text Extraction & Formatting Rules:
-    - Picture: For the 'Picture' category, the text field should be omitted.
-    - Formula: Format its text as LaTeX.
-    - Table: Format its text as HTML.
-    - All Others (Text, Title, etc.): Format their text as Markdown.
-
-4. Constraints:
-    - The output text must be the original text from the image, with no translation.
-    - All layout elements must be sorted according to human reading order.
-
-5. Final Output: The entire output must be a single JSON array.
-`.trim();
-
 // NuExtract 3 takes a JSON template (the fields to pull out), not a prose
 // instruction. This default template suits classical book-page scans; users
 // edit it freely in the System Prompt / Template box. "verbatim-string" tells
@@ -176,7 +153,6 @@ export type PromptProfile =
   | "chandra_html"
   | "glm_ocr_markdown"
   | "numarkdown_thinking"
-  | "dots_ocr_layout"
   | "nuextract_template"
   | "nuextract_footnotes";
 
@@ -223,11 +199,6 @@ export const PROMPT_PROFILES: Record<PromptProfile, { name: string; description:
     name: "NuMarkdown (Thinking)",
     description: "Markdown output for reasoning OCR models like NuMarkdown-8B-thinking. The model's <think> reasoning and <answer> wrapper are stripped automatically. No bounding boxes.",
     prompt: NUMARKDOWN_PROMPT
-  },
-  dots_ocr_layout: {
-    name: "dots.ocr (Layout JSON)",
-    description: "Layout-aware OCR for dots.ocr. Emits a JSON array of elements with bbox/category/text, rendered as HTML with bounding boxes. Coordinates are raw pixels.",
-    prompt: DOTS_OCR_PROMPT
   },
   nuextract_template: {
     name: "NuExtract 3 (Template Extraction)",

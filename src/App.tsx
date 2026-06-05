@@ -54,9 +54,10 @@ export const App: React.FC = () => {
 
   // LM Studio Config
   const [lmBaseUrl, setLmBaseUrl] = useState("http://localhost:1234");
-  const [lmModel, setLmModel] = useState("numarkdown-8b-thinking-mlxs");
+  const [lmModel, setLmModel] = useState("nuextract3-mlxs");
   const [lmApiKey, setLmApiKey] = useState("lm-studio");
   // Markdown model used to re-OCR pages where NuExtract drops template mode.
+  const [useNuExtractFallback, setUseNuExtractFallback] = useState(true);
   const [nuExtractFallbackModel, setNuExtractFallbackModel] = useState("numarkdown-8b-thinking-mlxs");
   // Strip scanner-background black borders from each image before OCR.
   const [cleanBorders, setCleanBorders] = useState(false);
@@ -72,10 +73,10 @@ export const App: React.FC = () => {
   const [ollamaModel, setOllamaModel] = useState("glm-ocr");
 
   // Prompt Profile
-  const [promptProfile, setPromptProfile] = useState<string>("numarkdown_thinking");
+  const [promptProfile, setPromptProfile] = useState<string>("nuextract_template");
 
   // Shared
-  const [systemPrompt, setSystemPrompt] = useState(getPromptByProfile("numarkdown_thinking"));
+  const [systemPrompt, setSystemPrompt] = useState(getPromptByProfile("nuextract_template"));
   const [showSettings, setShowSettings] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
 
@@ -213,6 +214,19 @@ export const App: React.FC = () => {
         };
       }
 
+      if (!useNuExtractFallback) {
+        return {
+          key: hash,
+          imageName: file.name,
+          model: `${lmModel} (unstructured, fallback off)`,
+          createdAt: Date.now(),
+          html: "",
+          markdownWithHeaders: "",
+          markdownNoHeaders: "",
+          extraction: extracted.content
+        };
+      }
+
       // Fallback pass: re-OCR with the markdown model and store as markdown.
       const fbHtml = await requestOcrHtml({
         config: { baseUrl: lmBaseUrl, model: nuExtractFallbackModel, apiKey: lmApiKey },
@@ -281,7 +295,7 @@ export const App: React.FC = () => {
     };
 
     return result;
-  }, [provider, lmBaseUrl, lmModel, lmApiKey, nuExtractFallbackModel, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, promptProfile, cleanBorders, borderThreshold]);
+  }, [provider, lmBaseUrl, lmModel, lmApiKey, useNuExtractFallback, nuExtractFallbackModel, googleApiKey, googleModel, ollamaBaseUrl, ollamaModel, systemPrompt, promptProfile, cleanBorders, borderThreshold]);
 
   const handleFileProcessed = useCallback((nodeId: string, result: OcrStoredResult) => {
     fileTree.setNodeOcrStatus(nodeId, "done");
@@ -498,6 +512,8 @@ export const App: React.FC = () => {
         setLmModel={setLmModel}
         lmApiKey={lmApiKey}
         setLmApiKey={setLmApiKey}
+        useNuExtractFallback={useNuExtractFallback}
+        setUseNuExtractFallback={setUseNuExtractFallback}
         nuExtractFallbackModel={nuExtractFallbackModel}
         setNuExtractFallbackModel={setNuExtractFallbackModel}
         cleanBorders={cleanBorders}

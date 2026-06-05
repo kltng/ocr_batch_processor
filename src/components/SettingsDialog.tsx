@@ -34,6 +34,8 @@ interface SettingsDialogProps {
     setLmModel: (val: string) => void;
     lmApiKey: string;
     setLmApiKey: (val: string) => void;
+    useNuExtractFallback: boolean;
+    setUseNuExtractFallback: (val: boolean) => void;
     nuExtractFallbackModel: string;
     setNuExtractFallbackModel: (val: string) => void;
     cleanBorders: boolean;
@@ -76,6 +78,8 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     setLmModel,
     lmApiKey,
     setLmApiKey,
+    useNuExtractFallback,
+    setUseNuExtractFallback,
     nuExtractFallbackModel,
     setNuExtractFallbackModel,
     cleanBorders,
@@ -124,7 +128,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
         deleteCustomProfile(id);
         setProfiles(getAllProfiles());
         if (promptProfile === id) {
-            setPromptProfile("chandra_html");
+            setPromptProfile("nuextract_template");
         }
     };
 
@@ -440,17 +444,36 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
                     {/* NuExtract fallback model (extraction profiles only) */}
                     {isExtraction && (
-                        <div className="space-y-2">
-                            <Label htmlFor="fallbackModel">Fallback OCR Model</Label>
-                            <Input
-                                id="fallbackModel"
-                                value={nuExtractFallbackModel}
-                                onChange={(e) => setNuExtractFallbackModel(e.target.value)}
-                                placeholder="numarkdown-8b-thinking-mlxs"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Pages where NuExtract drops template mode (chapter openers with icons/titles) are re-OCR'd with this model and saved as Markdown.
-                            </p>
+                        <div className="space-y-2 rounded-md border p-3">
+                            <label className="flex items-start gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="mt-0.5"
+                                    checked={useNuExtractFallback}
+                                    onChange={(e) => setUseNuExtractFallback(e.target.checked)}
+                                />
+                                <span className="text-sm">
+                                    Use fallback OCR model
+                                    <span className="block text-xs text-muted-foreground">
+                                        Re-OCR pages where NuExtract returns unstructured text instead of template JSON.
+                                    </span>
+                                </span>
+                            </label>
+
+                            {useNuExtractFallback && (
+                                <div className="space-y-2 pl-6 pt-1">
+                                    <Label htmlFor="fallbackModel">Fallback OCR Model</Label>
+                                    <Input
+                                        id="fallbackModel"
+                                        value={nuExtractFallbackModel}
+                                        onChange={(e) => setNuExtractFallbackModel(e.target.value)}
+                                        placeholder="numarkdown-8b-thinking-mlxs"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Fallback output is saved as Markdown. When disabled, the raw unstructured NuExtract response is saved instead.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
 

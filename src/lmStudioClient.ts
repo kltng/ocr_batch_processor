@@ -53,7 +53,8 @@ type LmStudioModel = {
 };
 
 type LmStudioModelsResponse = {
-  data: LmStudioModel[];
+  data?: LmStudioModel[];
+  models?: LmStudioModel[];
 };
 
 export async function requestOcrHtml({
@@ -143,7 +144,7 @@ export async function listLmStudioModels(
 
   const data = (await resp.json()) as LmStudioModelsResponse;
 
-  const models = (data.data ?? []).map(model => ({
+  const models = (data.data ?? data.models ?? []).map(model => ({
     key: model.key,
     hasVision: model.capabilities?.vision ?? false
   }));
@@ -154,4 +155,3 @@ export async function listLmStudioModels(
 
   return models;
 }
-

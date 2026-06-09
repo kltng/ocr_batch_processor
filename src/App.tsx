@@ -44,9 +44,13 @@ function flattenFileNodes(nodes: FileTreeNode[]): FileTreeNode[] {
 
 export const App: React.FC = () => {
   const [showHttpsWarning, setShowHttpsWarning] = useState(false);
+  const [folderAccessError, setFolderAccessError] = useState<string | null>(null);
 
   useEffect(() => {
     setShowHttpsWarning(checkIsDeployedWithLocalProvider());
+    if (typeof window !== "undefined" && !("showDirectoryPicker" in window)) {
+      setFolderAccessError("Folder access is not available in this browser. Open the app in Chrome or Edge on localhost or HTTPS.");
+    }
   }, []);
 
   // --- Config State ---
@@ -322,6 +326,11 @@ export const App: React.FC = () => {
 
   // --- Handlers ---
   const handleOpenFolder = useCallback(async () => {
+    if (typeof window === "undefined" || !("showDirectoryPicker" in window)) {
+      setFolderAccessError("Folder access is not available in this browser. Open the app in Chrome or Edge on localhost or HTTPS.");
+      return;
+    }
+
     try {
       const handle = await (window as any).showDirectoryPicker();
 
@@ -330,13 +339,19 @@ export const App: React.FC = () => {
       };
       const permission = await handleWithPermission.requestPermission({ mode: "readwrite" });
       if (permission !== "granted") {
+        setFolderAccessError("Read/write permission was not granted for that folder.");
         return;
       }
 
       setWorkDirHandle(handle);
       setSelectedIds(new Set());
       setOcrResult(null);
+      setFolderAccessError(null);
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return;
+      }
+      setFolderAccessError(e instanceof Error ? e.message : "Unable to open that folder.");
       console.error(e);
     }
   }, []);
@@ -466,6 +481,7 @@ export const App: React.FC = () => {
             totalFileCount={fileTree.totalFileCount}
             onOpenFolder={handleOpenFolder}
             hasFolder={!!workDirHandle}
+            folderAccessError={folderAccessError}
           />
         }
         toolbar={

@@ -164,14 +164,17 @@ export const EXTRACTION_PROFILES = new Set<string>([
 ]);
 
 export function isExtractionProfile(profileId: string): boolean {
-  return EXTRACTION_PROFILES.has(profileId);
+  return getProfileKind(profileId) === "extraction";
 }
+
+export type PromptProfileKind = "ocr" | "extraction";
 
 export type CustomPromptProfile = {
   id: string; // unique ID (e.g., "custom_" + timestamp)
   name: string;
   description: string;
   prompt: string;
+  kind: PromptProfileKind;
   isCustom: true;
 };
 
@@ -219,7 +222,26 @@ export function loadCustomProfiles(): CustomPromptProfile[] {
     const stored = localStorage.getItem(CUSTOM_PROFILES_STORAGE_KEY);
     if (!stored) return [];
     const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((profile): profile is Partial<CustomPromptProfile> & { id: string; name: string; prompt: string } => (
+        typeof profile?.id === "string" &&
+        typeof profile?.name === "string" &&
+        typeof profile?.prompt === "string"
+      ))
+      .map(profile => ({
+        id: profile.id,
+        name: profile.name,
+        description: typeof profile.description === "string"
+          ? profile.description
+          : `Custom profile: ${profile.name.substring(0, 50)}${profile.name.length > 50 ? "..." : ""}`,
+        prompt: profile.prompt,
+        kind: profile.kind === "extraction" || profile.kind === "ocr"
+          ? profile.kind
+          : inferPromptKind(profile.prompt),
+        isCustom: true
+      }));
   } catch {
     return [];
   }
@@ -229,13 +251,18 @@ export function saveCustomProfiles(profiles: CustomPromptProfile[]): void {
   localStorage.setItem(CUSTOM_PROFILES_STORAGE_KEY, JSON.stringify(profiles));
 }
 
-export function addCustomProfile(name: string, prompt: string): CustomPromptProfile {
+export function addCustomProfile(
+  name: string,
+  prompt: string,
+  kind: PromptProfileKind = inferPromptKind(prompt)
+): CustomPromptProfile {
   const profiles = loadCustomProfiles();
   const newProfile: CustomPromptProfile = {
     id: `custom_${Date.now()}`,
     name,
     description: `Custom profile: ${name.substring(0, 50)}${name.length > 50 ? "..." : ""}`,
     prompt,
+    kind,
     isCustom: true
   };
   profiles.push(newProfile);
@@ -261,6 +288,7 @@ export type ProfileInfo = {
   name: string;
   description: string;
   prompt: string;
+  kind: PromptProfileKind;
   isCustom: boolean;
 };
 
@@ -270,6 +298,7 @@ export function getAllProfiles(): ProfileInfo[] {
     name: profile.name,
     description: profile.description,
     prompt: profile.prompt,
+    kind: EXTRACTION_PROFILES.has(key) ? "extraction" : "ocr",
     isCustom: false
   }));
   
@@ -278,6 +307,7 @@ export function getAllProfiles(): ProfileInfo[] {
     name: p.name,
     description: p.description,
     prompt: p.prompt,
+    kind: p.kind,
     isCustom: true
   }));
   
@@ -295,10 +325,36 @@ export function getProfilePrompt(profileId: string): string {
 export function getProfileInfo(profileId: string): ProfileInfo | undefined {
   if (profileId in PROMPT_PROFILES) {
     const p = PROMPT_PROFILES[profileId as PromptProfile];
-    return { id: profileId, name: p.name, description: p.description, prompt: p.prompt, isCustom: false };
+    return {
+      id: profileId,
+      name: p.name,
+      description: p.description,
+      prompt: p.prompt,
+      kind: EXTRACTION_PROFILES.has(profileId) ? "extraction" : "ocr",
+      isCustom: false
+    };
   }
   const custom = getCustomProfileById(profileId);
   return custom ? { ...custom } : undefined;
+}
+
+export function getProfileKind(profileId: string): PromptProfileKind {
+  if (EXTRACTION_PROFILES.has(profileId)) return "extraction";
+  if (profileId in PROMPT_PROFILES) return "ocr";
+
+  const custom = getCustomProfileById(profileId);
+  return custom?.kind ?? "ocr";
+}
+
+function inferPromptKind(prompt: string): PromptProfileKind {
+  try {
+    const parsed = JSON.parse(prompt);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? "extraction"
+      : "ocr";
+  } catch {
+    return "ocr";
+  }
 }
 
 export type PromptType = "ocr_layout" | "ocr";

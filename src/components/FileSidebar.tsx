@@ -19,6 +19,7 @@ interface FileSidebarProps {
     className?: string;
     onOpenFolder?: () => void;
     hasFolder: boolean;
+    folderAccessError?: string | null;
 }
 
 /** Flatten all file node IDs from tree */
@@ -54,6 +55,7 @@ export const FileSidebar: React.FC<FileSidebarProps> = ({
     className,
     onOpenFolder,
     hasFolder,
+    folderAccessError,
 }) => {
     const lastClickedRef = useRef<string | null>(null);
 
@@ -116,6 +118,11 @@ export const FileSidebar: React.FC<FileSidebarProps> = ({
                         <FolderOpen className="w-3 h-3" />
                         Change Folder
                     </Button>
+                )}
+                {folderAccessError && (
+                    <p className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+                        {folderAccessError}
+                    </p>
                 )}
             </div>
 

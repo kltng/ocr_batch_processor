@@ -12,10 +12,10 @@ import {
     isExtractionProfile,
     ProfileInfo
 } from "../ocr/prompts";
-import { listLmStudioModels } from "../lmStudioClient";
+import { listLmStudioModels, type LmStudioModelInfo } from "../lmStudioClient";
 import { listOllamaModels } from "../ollamaClient";
 import { testGeminiConnection } from "../geminiClient";
-import { Trash2 } from "lucide-react";
+import { RefreshCw, Trash2 } from "lucide-react";
 
 export type OcrProvider = "lmstudio" | "google" | "ollama";
 
@@ -107,6 +107,9 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     const [lmTest, setLmTest] = useState<TestResult>({ status: "idle", message: "" });
     const [googleTest, setGoogleTest] = useState<TestResult>({ status: "idle", message: "" });
     const [ollamaTest, setOllamaTest] = useState<TestResult>({ status: "idle", message: "" });
+    const [lmModels, setLmModels] = useState<LmStudioModelInfo[]>([]);
+    const [lmModelsStatus, setLmModelsStatus] = useState<TestResult>({ status: "idle", message: "" });
+    const [lmModelsStatusTarget, setLmModelsStatusTarget] = useState<string | null>(null);
 
     useEffect(() => {
         if (isOpen) {
@@ -118,8 +121,13 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
     const handleSaveProfile = () => {
         if (!newProfileName.trim()) return;
-        addCustomProfile(newProfileName.trim(), systemPrompt);
+        const newProfile = addCustomProfile(
+            newProfileName.trim(),
+            systemPrompt,
+            isExtraction ? "extraction" : "ocr"
+        );
         setProfiles(getAllProfiles());
+        setPromptProfile(newProfile.id);
         setNewProfileName("");
         setShowSaveModal(false);
     };
@@ -135,11 +143,28 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
     const testLmStudio = async () => {
         setLmTest({ status: "loading", message: "Testing..." });
         try {
-            await listLmStudioModels(baseUrl, lmApiKey || undefined);
-            setLmTest({ status: "success", message: "Connected successfully" });
+            const models = await listLmStudioModels(baseUrl, lmApiKey || undefined);
+            setLmModels(models);
+            setLmTest({ status: "success", message: `Connected (${models.length} models available)` });
         } catch (err) {
             const msg = err instanceof Error ? err.message : "Connection failed";
             setLmTest({ status: "error", message: msg });
+        }
+    };
+
+    const loadLmStudioModels = async (targetId: string) => {
+        setLmModelsStatusTarget(targetId);
+        setLmModelsStatus({ status: "loading", message: "Loading..." });
+        try {
+            const models = await listLmStudioModels(baseUrl, lmApiKey || undefined);
+            setLmModels(models);
+            setLmModelsStatus({
+                status: "success",
+                message: models.length > 0 ? `${models.length} models loaded` : "No models returned"
+            });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : "Failed to load models";
+            setLmModelsStatus({ status: "error", message: msg });
         }
     };
 
@@ -190,6 +215,74 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                 </Button>
                 {testState.message && (
                     <span className={`text-xs ${colorClass}`}>{testState.message}</span>
+                )}
+            </div>
+        );
+    };
+
+    const renderLmStudioModelPicker = (
+        id: string,
+        label: string,
+        value: string,
+        onChange: (val: string) => void,
+        placeholder: string
+    ) => {
+        const selectedModelIsListed = lmModels.some(model => model.key === value);
+
+        return (
+            <div className="space-y-2">
+                <Label htmlFor={id}>{label}</Label>
+                <div className="flex items-center gap-2">
+                    <select
+                        id={id}
+                        value={selectedModelIsListed ? value : ""}
+                        onChange={(e) => {
+                            if (e.target.value) onChange(e.target.value);
+                        }}
+                        disabled={lmModels.length === 0}
+                        className="flex-1 px-3 py-2 border rounded-md bg-background text-sm disabled:opacity-60"
+                    >
+                        <option value="">
+                            {lmModels.length === 0 ? "Load models from LM Studio" : "Select a model"}
+                        </option>
+                        {lmModels.map(model => (
+                            <option key={model.key} value={model.key}>
+                                {model.key}{model.hasVision ? " (vision)" : ""}
+                            </option>
+                        ))}
+                    </select>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => loadLmStudioModels(id)}
+                        disabled={lmModelsStatus.status === "loading"}
+                        className="h-9 px-2"
+                        title="Load models from LM Studio"
+                        aria-label="Load models from LM Studio"
+                    >
+                        <RefreshCw
+                            className={`h-3.5 w-3.5 ${lmModelsStatus.status === "loading" ? "animate-spin" : ""}`}
+                            aria-hidden="true"
+                        />
+                    </Button>
+                </div>
+                <Input
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={placeholder}
+                    aria-label={`${label} manual entry`}
+                />
+                {lmModelsStatusTarget === id && lmModelsStatus.message && (
+                    <p className={`text-xs ${
+                        lmModelsStatus.status === "error"
+                            ? "text-red-500"
+                            : lmModelsStatus.status === "success"
+                                ? "text-green-500"
+                                : "text-muted-foreground"
+                    }`}>
+                        {lmModelsStatus.message}
+                    </p>
                 )}
             </div>
         );
@@ -261,15 +354,13 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="lmModel">Model Name</Label>
-                                <Input
-                                    id="lmModel"
-                                    value={lmModel}
-                                    onChange={(e) => setLmModel(e.target.value)}
-                                    placeholder="e.g. compvis/ocr-model"
-                                />
-                            </div>
+                            {renderLmStudioModelPicker(
+                                "lmModel",
+                                "Model",
+                                lmModel,
+                                setLmModel,
+                                "e.g. nuextract3-mlxs"
+                            )}
 
                             <div className="space-y-2">
                                 <Label htmlFor="lmApiKey">API Key (Optional)</Label>
@@ -437,6 +528,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         {currentProfile && (
                             <p className="text-xs text-muted-foreground">
                                 {currentProfile.description}
+                                {currentProfile.kind === "extraction" && <span className="ml-2 text-amber-600">Template</span>}
                                 {currentProfile.isCustom && <span className="ml-2 text-blue-500">(Custom)</span>}
                             </p>
                         )}
@@ -462,13 +554,13 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
                             {useNuExtractFallback && (
                                 <div className="space-y-2 pl-6 pt-1">
-                                    <Label htmlFor="fallbackModel">Fallback OCR Model</Label>
-                                    <Input
-                                        id="fallbackModel"
-                                        value={nuExtractFallbackModel}
-                                        onChange={(e) => setNuExtractFallbackModel(e.target.value)}
-                                        placeholder="numarkdown-8b-thinking-mlxs"
-                                    />
+                                    {renderLmStudioModelPicker(
+                                        "fallbackModel",
+                                        "Fallback OCR Model",
+                                        nuExtractFallbackModel,
+                                        setNuExtractFallbackModel,
+                                        "numarkdown-8b-thinking-mlxs"
+                                    )}
                                     <p className="text-xs text-muted-foreground">
                                         Fallback output is saved as Markdown. When disabled, the raw unstructured NuExtract response is saved instead.
                                     </p>
